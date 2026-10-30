@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Harmony — musical note</title>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0.0" stop-color="#3e4dc7" />
+      <stop offset="1.0" stop-color="#7e3dba" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#background)" />
+  <path fill="#FFFFFF" d="M486 252h64c0 86 178 94 178 213 0 58-28 103-72 133 18-37 19-70 1-98-24-37-65-46-107-68v238c0 64-62 116-134 116-60 0-104-31-104-76 0-64 66-116 138-116 12 0 24 1 36 4Z" />
+</svg>

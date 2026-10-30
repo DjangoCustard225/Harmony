@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+xtool/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.bsp/
+build/
+dist/
+*.ipa
+*.dSYM/
+.env
+.env.*
