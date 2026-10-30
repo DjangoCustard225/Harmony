@@ -4,13 +4,11 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
-      # Xcode 27 (or newer) is required for the iOS 27 deployment target and Swift 6.4.
-      # Pin an explicit version here if "latest" does not have the iOS 27 SDK yet.
-      xcode: latest
+      # Harmony requires the iOS 27 SDK and Swift 6.4.
+      xcode: "27.2"
     cache:
       cache_paths:
         - $HOME/Library/Caches/org.swift.swiftpm
-        - $HOME/Library/Developer/Xcode/DerivedData
     scripts:
       - name: Show toolchain versions
         script: |
@@ -20,8 +18,12 @@ workflows:
       - name: Run HarmonyCore tests
         script: |
           swift test --package-path Core
+      - name: Check Swift formatting
+        script: |
+          swift format lint --strict --recursive Harmony Core/Sources Core/Tests Scripts Package.swift Core/Package.swift
       - name: Build and verify unsigned IPA
         script: |
           bash Scripts/BuildIPA.sh build/ios dist/Harmony.ipa
     artifacts:
       - dist/Harmony.ipa
+      - /tmp/xcodebuild_logs/*.log
