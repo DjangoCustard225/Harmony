@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/iOS-27%2B-007AFF?style=flat-square" alt="Requires iOS 27 or later">
 </p>
 
-Harmony keeps your music on your device. Import audio files, browse your library and listen offline with background playback and lock-screen controls.
+Harmony keeps your music on your device. Import audio files, browse your library and listen offline.
 
 ## What you can do
 
@@ -23,12 +23,10 @@ Harmony keeps your music on your device. Import audio files, browse your library
 
 Open Harmony and choose **Import music** in Settings. Imported songs are copied to the app and stay available offline. Use **Refresh library** to find audio files already in Harmony’s Music folder.
 
-Open `Harmony.xcodeproj` in Xcode 27 and run the Harmony scheme with your signing team. See [building instructions](docs/BUILDING.md) for unsigned IPA builds.
-
 ## Privacy
 
 Audio files stay on your device. Optional artist lookups send artist names to online services. Harmony has no ads or analytics.
 
 ## Credits
 
-Adapted from [Gevun](https://github.com/DjangoCustard225/Gevun). Artist information uses Deezer, with TheAudioDB as fallback. Licensed under [MIT](LICENSE).
+Artist information uses Deezer, with TheAudioDB as fallback. Licensed under [MIT](LICENSE).
