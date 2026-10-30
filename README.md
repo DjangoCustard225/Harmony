@@ -12,6 +12,13 @@
 
 Harmony keeps your music on your device. Import audio files, browse your library and listen offline.
 
+## Screenshots
+
+<picture>
+  <source media="(max-width: 600px)" srcset="docs/screenshots/readme-mobile.png">
+  <img src="docs/screenshots/readme-desktop.png" width="840" alt="Harmony player, settings, artists, albums and songs screens">
+</picture>
+
 ## What you can do
 
 - Browse and sort songs, albums and artists.
