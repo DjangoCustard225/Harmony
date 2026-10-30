@@ -15,7 +15,7 @@ with zipfile.ZipFile(ipa) as archive:
     names = set(archive.namelist())
     app = "Payload/Harmony.app/"
     info = plistlib.loads(archive.read(app + "Info.plist"))
-    assert info["CFBundleIdentifier"] == "app.harmony.music"
+    assert info["CFBundleIdentifier"] == "app.harmony"
     for key in ("CFBundleDisplayName", "CFBundleShortVersionString", "CFBundleVersion"):
         assert info[key] == expected[key], f"Unexpected {key}"
     assert info["CFBundleSupportedPlatforms"] == ["iPhoneOS"], "Not a device build"

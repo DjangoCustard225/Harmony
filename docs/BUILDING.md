@@ -16,7 +16,7 @@ On Linux, use xtool with a compatible iOS 27 SDK:
 xtool dev build -c release --triple arm64-apple-ios27.0 --ipa
 ```
 
-This writes `xtool/Harmony.ipa`. Linux uses `AppIcon.png`; Xcode uses the `HarmonyIcon.icon` source. The bundle identifier is `app.harmony.music`, separate from Gevun.
+This writes `xtool/Harmony.ipa`. Linux uses `AppIcon.png`; Xcode uses the `HarmonyIcon.icon` source. The bundle identifier is `app.harmony`, separate from Gevun.
 
 Run core tests and format checks:
 
