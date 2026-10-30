@@ -19,10 +19,6 @@ Harmony keeps your music on your device. Import audio files, browse your library
   <img src="docs/screenshots/readme-desktop.png" width="840" alt="Harmony player, settings, artists, albums, songs and lyrics screens">
 </picture>
 
-<p align="center">
-  <img src="docs/screenshots/lyrics.png" width="280" alt="Harmony synced lyrics screen">
-</p>
-
 ## What you can do
 
 - Browse and sort songs, albums and artists.
