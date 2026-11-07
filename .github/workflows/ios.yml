@@ -1,0 +1,27 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Test HarmonyCore
+        run: swift test --package-path Core
+      - name: Build unsigned IPA
+        run: bash Scripts/BuildIPA.sh
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Harmony-unsigned-ipa
+          path: dist/Harmony.ipa
+          if-no-files-found: error
