@@ -16,7 +16,7 @@ Harmony keeps your music on your device. Import audio files, browse your library
 
 <picture>
   <source media="(max-width: 600px)" srcset="docs/screenshots/readme-mobile.png">
-  <img src="docs/screenshots/readme-desktop.png" width="840" alt="Harmony player, settings, artists, albums, songs and lyrics screens">
+  <img src="docs/screenshots/readme-desktop.png" width="840" alt="Harmony player, artists, albums, songs, artist profile and lyrics screens">
 </picture>
 
 ## What you can do
