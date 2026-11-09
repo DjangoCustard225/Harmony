@@ -38,6 +38,25 @@ final class LocalLibraryTests: XCTestCase {
         library.setFingerprint(nil, for: "b")
         XCTAssertTrue(library.duplicateGroups.isEmpty)
     }
+    func testDuplicateGroupsKeepOldestCopyFirstAndBreakTiesByID() {
+        let fingerprint = FileFingerprint(sha256: "identical", size: 123, modified: Date(timeIntervalSince1970: 10))
+        let older = Date(timeIntervalSince1970: 20)
+        let newer = Date(timeIntervalSince1970: 30)
+        let tracks = [
+            LocalTrack(
+                id: "c", filename: "c", title: "Song", artist: nil, album: nil, added: newer,
+                fingerprint: fingerprint),
+            LocalTrack(
+                id: "b", filename: "b", title: "Song", artist: nil, album: nil, added: older,
+                fingerprint: fingerprint),
+            LocalTrack(
+                id: "a", filename: "a", title: "Song", artist: nil, album: nil, added: older,
+                fingerprint: fingerprint),
+        ]
+        let group = LocalLibraryIndex(tracks: tracks).duplicateGroups[0]
+        XCTAssertEqual(group.map(\.id), ["a", "b", "c"])
+        XCTAssertEqual(group.dropFirst().map(\.id), ["b", "c"])
+    }
     func testLegacyManifestWithoutFingerprintDecodes() throws {
         let track = LocalTrack(filename: "a.flac", title: "Song", artist: nil, album: nil)
         let data = try JSONEncoder().encode(LocalLibraryIndex(tracks: [track]))

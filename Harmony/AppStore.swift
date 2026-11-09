@@ -220,8 +220,9 @@ final class AppStore {
             duplicateGroups = library.index.duplicateGroups
         } catch { duplicateWarnings = [error.localizedDescription]; duplicateGroups = [] }
     }
-    func removeDuplicates(_ ids: Set<String>) async {
-        guard !libraryBusy, let library, !ids.isEmpty else { return }
+    /// A nil selection removes every duplicate after a fresh scan, keeping the oldest copy.
+    func removeDuplicates(_ ids: Set<String>? = nil) async {
+        guard !libraryBusy, let library, ids?.isEmpty != true else { return }
         reviewingDuplicates = true
         defer { reviewingDuplicates = false; Task { await processImports() } }
         do {
@@ -229,7 +230,9 @@ final class AppStore {
             let currentGroups = library.index.duplicateGroups
             var removed = 0
             for group in currentGroups {
-                let chosen = group.filter { ids.contains($0.id) }
+                let chosen =
+                    ids.map { selection in group.filter { selection.contains($0.id) } }
+                    ?? Array(group.dropFirst())
                 guard !chosen.isEmpty, chosen.count < group.count else { continue }
                 for track in chosen {
                     do {

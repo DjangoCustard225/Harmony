@@ -6,6 +6,7 @@ struct DuplicateReviewView: View {
     @Environment(\.appTheme) private var theme
     @State private var selected: Set<String> = []
     @State private var confirming = false
+    @State private var confirmingAll = false
 
     private var removesWholeGroup: Bool {
         store.duplicateGroups.contains { group in group.allSatisfy { selected.contains($0.id) } }
@@ -25,6 +26,8 @@ struct DuplicateReviewView: View {
                 Section {
                     Text("Select the copies you want to remove. Keep at least one copy in each group.")
                         .foregroundStyle(theme.secondary)
+                    Button("Remove all duplicates", role: .destructive) { confirmingAll = true }
+                        .disabled(store.libraryBusy)
                 }.listRowBackground(theme.surface)
                 ForEach(Array(store.duplicateGroups.enumerated()), id: \.offset) { _, group in
                     Section {
@@ -74,6 +77,15 @@ struct DuplicateReviewView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Remove \(selected.count) selected copies from Harmony?")
+        }
+        .alert("Remove all duplicates?", isPresented: $confirmingAll) {
+            Button("Remove duplicates", role: .destructive) {
+                selected.removeAll()
+                Task { await store.removeDuplicates() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Harmony will keep the oldest copy in each group of identical files.")
         }
         .task { await store.scanDuplicates() }
     }
