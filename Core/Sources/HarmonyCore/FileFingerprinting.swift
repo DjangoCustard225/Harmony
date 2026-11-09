@@ -5,13 +5,12 @@
     extension FileFingerprint {
         /// Reads a file incrementally and rejects files that change during hashing.
         public static func read(_ url: URL, cached: FileFingerprint? = nil) throws -> FileFingerprint {
-            let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey]
             func stamp() throws -> (Int64, Date) {
-                let values = try url.resourceValues(forKeys: keys)
-                guard let size = values.fileSize, let modified = values.contentModificationDate else {
+                let values = try FileManager.default.attributesOfItem(atPath: url.path)
+                guard let size = values[.size] as? NSNumber, let modified = values[.modificationDate] as? Date else {
                     throw CocoaError(.fileReadUnknown)
                 }
-                return (Int64(size), modified)
+                return (size.int64Value, modified)
             }
             let (size, modified) = try stamp()
             if let cached, cached.size == size, cached.modified == modified { return cached }
