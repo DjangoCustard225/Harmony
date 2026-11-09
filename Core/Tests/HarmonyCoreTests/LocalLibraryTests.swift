@@ -2,6 +2,54 @@ import XCTest
 @testable import HarmonyCore
 
 final class LocalLibraryTests: XCTestCase {
+    #if canImport(CryptoKit)
+        func testFingerprintReadsFullContentAndRechecksChangedFiles() throws {
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let a = folder.appendingPathComponent("first.mp3")
+            let b = folder.appendingPathComponent("renamed.flac")
+            try Data("abc".utf8).write(to: a)
+            try Data("abc".utf8).write(to: b)
+            let first = try FileFingerprint.read(a)
+            let second = try FileFingerprint.read(b)
+            XCTAssertEqual(first.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+            XCTAssertEqual(first.sha256, second.sha256)
+            try Data("different".utf8).write(to: a)
+            XCTAssertNotEqual(try FileFingerprint.read(a, cached: first).sha256, first.sha256)
+            try FileManager.default.removeItem(at: a)
+            XCTAssertThrowsError(try FileFingerprint.read(a, cached: first))
+        }
+    #endif
+    func testFingerprintsSurviveStorageAndGroupOnlyMatchingContents() throws {
+        let stamp = Date(timeIntervalSince1970: 100)
+        let matching = FileFingerprint(sha256: "same", size: 10, modified: stamp)
+        let otherSize = FileFingerprint(sha256: "same", size: 11, modified: stamp)
+        let a = LocalTrack(id: "a", filename: "a.mp3", title: "Song", artist: "Band", album: "One")
+        let b = LocalTrack(id: "b", filename: "b.mp3", title: "Song", artist: "Band", album: "One")
+        let c = LocalTrack(id: "c", filename: "c.mp3", title: "Song", artist: "Band", album: "One")
+        var library = LocalLibraryIndex(tracks: [a, b, c])
+        library.setFingerprint(matching, for: "a")
+        library.setFingerprint(matching, for: "b")
+        library.setFingerprint(otherSize, for: "c")
+        let restored = try JSONDecoder().decode(LocalLibraryIndex.self, from: JSONEncoder().encode(library))
+        XCTAssertEqual(restored.duplicateGroups.map { $0.map(\.id) }, [["a", "b"]])
+        XCTAssertEqual(restored.tracks.first?.fingerprint, matching)
+        library.setFingerprint(nil, for: "b")
+        XCTAssertTrue(library.duplicateGroups.isEmpty)
+    }
+    func testLegacyManifestWithoutFingerprintDecodes() throws {
+        let track = LocalTrack(filename: "a.flac", title: "Song", artist: nil, album: nil)
+        let data = try JSONEncoder().encode(LocalLibraryIndex(tracks: [track]))
+        var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var tracks = try XCTUnwrap(manifest["tracks"] as? [[String: Any]])
+        tracks[0].removeValue(forKey: "fingerprint")
+        manifest["tracks"] = tracks
+        let restored = try JSONDecoder().decode(
+            LocalLibraryIndex.self, from: JSONSerialization.data(withJSONObject: manifest))
+        XCTAssertNil(restored.tracks[0].fingerprint)
+        XCTAssertTrue(restored.duplicateGroups.isEmpty)
+    }
     func testAlbumsUseAlbumArtistAndDiscTrackOrder() throws {
         let tracks = [
             LocalTrack(

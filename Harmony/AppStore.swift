@@ -30,7 +30,21 @@ final class AppStore {
     private(set) var importing = false
     private(set) var refreshingMetadata = false
     private(set) var refreshingLibrary = false
+    private(set) var reviewingDuplicates = false
+    private(set) var duplicateGroups: [[LocalTrack]] = []
+    private(set) var duplicateWarnings: [String] = []
+    var libraryBusy: Bool { importing || refreshingMetadata || refreshingLibrary || reviewingDuplicates }
     private(set) var importProgress = ""
+    private struct ImportSummary {
+        var added = 0
+        var duplicates = 0
+        var failures: [String] = []
+        mutating func merge(_ other: ImportSummary) {
+            added += other.added
+            duplicates += other.duplicates
+            failures += other.failures
+        }
+    }
     private enum ImportSelection {
         case files([URL])
         case folder(URL)
@@ -53,9 +67,9 @@ final class AppStore {
         } catch { notice = "Your library couldn't be opened: \(error.localizedDescription)" }
     }
     func refreshImportedMetadata(force: Bool = false) async {
-        guard !refreshingMetadata else { return }
+        guard !libraryBusy else { return }
         refreshingMetadata = true
-        defer { refreshingMetadata = false }
+        defer { refreshingMetadata = false; Task { await processImports() } }
         do {
             if try await library?.refreshImportedMetadata(force: force) == true {
                 libraryDidChange(refreshPlayerMetadata: true)
@@ -63,17 +77,16 @@ final class AppStore {
         } catch { notice = "Music metadata couldn't be refreshed: \(error.localizedDescription)" }
     }
     func refreshLibraryFromDisk() async {
-        guard !refreshingLibrary, !importing, let library else { return }
+        guard !libraryBusy, let library else { return }
         refreshingLibrary = true
-        defer { refreshingLibrary = false }
+        defer { refreshingLibrary = false; importProgress = ""; Task { await processImports() } }
         do {
-            let added = try await library.refreshLibrary()
+            importProgress = "Finding music…"
+            let scan = try await library.filesForRefresh()
+            var summary = await importBatch(scan.files.filter { !library.isIndexedFile($0) }, into: library)
+            summary.failures.insert(contentsOf: scan.warnings, at: 0)
             libraryDidChange()
-            if added == 0 {
-                notice = "Harmony’s music folder is up to date."
-            } else {
-                notice = "Added \(added) song\(added == 1 ? "" : "s") from Harmony’s music folder."
-            }
+            showImportSummary(summary, emptyMessage: "Harmony’s music folder is up to date.")
         } catch { notice = "Harmony’s music folder couldn’t be scanned: \(error.localizedDescription)" }
     }
     func refreshLibrary() {
@@ -115,36 +128,55 @@ final class AppStore {
         await processImports()
     }
     private func processImports() async {
-        guard !importing, let library else { return }
+        guard !libraryBusy, !pendingImports.isEmpty, let library else { return }
         importing = true
         defer { importing = false; importProgress = "" }
-        var failures: [String] = []
+        var summary = ImportSummary()
         while !pendingImports.isEmpty {
             switch pendingImports.removeFirst() {
-            case .files(let urls): failures += await importBatch(urls, into: library)
-            case .folder(let url): failures += await importDirectory(url, into: library)
+            case .files(let urls): summary.merge(await importBatch(urls, into: library))
+            case .folder(let url): summary.merge(await importDirectory(url, into: library))
             }
         }
         libraryDidChange()
-        if !failures.isEmpty {
-            var message = failures.prefix(5).joined(separator: "\n\n")
-            if failures.count > 5 {
-                message += "\n\nAnd \(failures.count - 5) more files or folders couldn’t be imported."
-            }
-            notice = message
-        }
+        showImportSummary(summary, emptyMessage: "No songs were selected.")
     }
-    private func importBatch(_ urls: [URL], into library: LocalMusicLibrary) async -> [String] {
-        var failures: [String] = []
+    private func showImportSummary(_ summary: ImportSummary, emptyMessage: String) {
+        guard summary.added > 0 || summary.duplicates > 0 || !summary.failures.isEmpty else {
+            notice = emptyMessage
+            return
+        }
+        var message =
+            "Added \(summary.added). Skipped \(summary.duplicates) duplicate\(summary.duplicates == 1 ? "" : "s")."
+        if !summary.failures.isEmpty {
+            message += " Failed \(summary.failures.count).\n\n" + summary.failures.prefix(5).joined(separator: "\n\n")
+            if summary.failures.count > 5 {
+                message += "\n\nAnd \(summary.failures.count - 5) more items couldn’t be read."
+            }
+        }
+        notice = message
+    }
+    private func importBatch(_ urls: [URL], into library: LocalMusicLibrary) async -> ImportSummary {
+        var summary = ImportSummary()
+        importProgress = "Checking existing songs…"
+        do { summary.failures += try await library.refreshFingerprints() } catch {
+            summary.failures.append("Couldn’t check existing songs: \(error.localizedDescription)")
+            return summary
+        }
         for (index, url) in urls.enumerated() {
             importProgress = "Importing \(index + 1) of \(urls.count)…"
-            do { try await library.importFile(url) } catch {
-                failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+            do {
+                switch try await library.importFile(url) {
+                case .added: summary.added += 1
+                case .duplicate: summary.duplicates += 1
+                }
+            } catch {
+                summary.failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
-        return failures
+        return summary
     }
-    private func importDirectory(_ directory: URL, into library: LocalMusicLibrary) async -> [String] {
+    private func importDirectory(_ directory: URL, into library: LocalMusicLibrary) async -> ImportSummary {
         // The folder picker delivers an app-owned temporary copy in folder mode.
         defer { try? FileManager.default.removeItem(at: directory) }
         let access = directory.startAccessingSecurityScopedResource()
@@ -164,13 +196,56 @@ final class AppStore {
                 return try scanResult.get()
             }.value
             guard !scan.files.isEmpty else {
-                return scan.warnings.isEmpty
+                var result = ImportSummary()
+                result.failures =
+                    scan.warnings.isEmpty
                     ? ["No audio files were found in this folder or its subfolders."] : scan.warnings
+                return result
             }
-            return scan.warnings + (await importBatch(scan.files, into: library))
-        } catch { return ["\(directory.lastPathComponent): \(error.localizedDescription)"] }
+            var result = await importBatch(scan.files, into: library)
+            result.failures.insert(contentsOf: scan.warnings, at: 0)
+            return result
+        } catch {
+            var result = ImportSummary()
+            result.failures = ["\(directory.lastPathComponent): \(error.localizedDescription)"]
+            return result
+        }
+    }
+    func scanDuplicates() async {
+        guard !libraryBusy, let library else { return }
+        reviewingDuplicates = true
+        defer { reviewingDuplicates = false; Task { await processImports() } }
+        do {
+            duplicateWarnings = try await library.refreshFingerprints()
+            duplicateGroups = library.index.duplicateGroups
+        } catch { duplicateWarnings = [error.localizedDescription]; duplicateGroups = [] }
+    }
+    func removeDuplicates(_ ids: Set<String>) async {
+        guard !libraryBusy, let library, !ids.isEmpty else { return }
+        reviewingDuplicates = true
+        defer { reviewingDuplicates = false; Task { await processImports() } }
+        do {
+            duplicateWarnings = try await library.refreshFingerprints()
+            let currentGroups = library.index.duplicateGroups
+            var removed = 0
+            for group in currentGroups {
+                let chosen = group.filter { ids.contains($0.id) }
+                guard !chosen.isEmpty, chosen.count < group.count else { continue }
+                for track in chosen {
+                    do {
+                        try library.remove(track.id)
+                        if player.queue.songs.contains(where: { $0.id == track.id }) { player.stop() }
+                        removed += 1
+                    } catch { duplicateWarnings.append("\(track.song.title): \(error.localizedDescription)") }
+                }
+            }
+            duplicateGroups = library.index.duplicateGroups
+            if removed > 0 { libraryDidChange() }
+            notice = "Removed \(removed) duplicate\(removed == 1 ? "" : "s")."
+        } catch { duplicateWarnings = [error.localizedDescription] }
     }
     func removeSong(_ song: Song) {
+        guard !libraryBusy else { notice = "Wait for the library operation to finish."; return }
         do {
             try library?.remove(song.id)
             // Stop queues that still reference the removed file.

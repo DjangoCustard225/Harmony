@@ -30,6 +30,8 @@ Harmony keeps your music on your device. Import audio files, browse your library
 
 Open Harmony and choose **Import music** in Settings. Imported songs are copied to the app and stay available offline. Use **Refresh library** to find audio files already in Harmony’s Music folder.
 
+Harmony skips files with identical contents. Use **Review duplicates** in Settings to choose which existing duplicate copies to remove.
+
 ## Privacy
 
 Audio files stay on your device. Optional artist lookups send artist names to online services. Harmony has no ads or analytics.

@@ -1,5 +1,17 @@
 import Foundation
 
+public struct FileFingerprint: Codable, Equatable, Sendable {
+    public let sha256: String
+    public let size: Int64
+    public let modified: Date
+
+    public init(sha256: String, size: Int64, modified: Date) {
+        self.sha256 = sha256
+        self.size = size
+        self.modified = modified
+    }
+}
+
 public struct LocalTrack: Codable, Identifiable, Sendable {
     public private(set) var song: Song
     public let filename: String
@@ -9,13 +21,15 @@ public struct LocalTrack: Codable, Identifiable, Sendable {
     public let metadata: TrackMetadata?
     public let originalFilename: String?
     public let metadataVersion: Int?
+    public private(set) var fingerprint: FileFingerprint?
     public var id: String { song.id }
 
     public init(
         id: String = UUID().uuidString, filename: String, title: String, artist: String?,
         album: String?, albumArtist: String? = nil, duration: Int? = nil, track: Int? = nil,
         disc: Int? = nil, artworkFilename: String? = nil, lyrics: String? = nil, added: Date = Date(),
-        metadata: TrackMetadata? = nil, originalFilename: String? = nil, metadataVersion: Int? = nil
+        metadata: TrackMetadata? = nil, originalFilename: String? = nil, metadataVersion: Int? = nil,
+        fingerprint: FileFingerprint? = nil
     ) {
         let performer = Self.clean(artist) ?? Self.clean(albumArtist) ?? "Unknown artist"
         let albumPerformer = Self.clean(albumArtist) ?? performer
@@ -39,11 +53,13 @@ public struct LocalTrack: Codable, Identifiable, Sendable {
         self.metadata = metadata
         self.originalFilename = originalFilename
         self.metadataVersion = metadataVersion
+        self.fingerprint = fingerprint
     }
     fileprivate mutating func setArtwork(filename: String) {
         artworkFilename = filename
         song.coverArt = id
     }
+    fileprivate mutating func setFingerprint(_ value: FileFingerprint?) { fingerprint = value }
     private static func clean(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
@@ -70,6 +86,17 @@ public struct LocalLibraryIndex: Codable, Sendable {
     public mutating func replace(_ track: LocalTrack) {
         guard let position = tracks.firstIndex(where: { $0.id == track.id }) else { return }
         tracks[position] = track
+    }
+    public mutating func setFingerprint(_ fingerprint: FileFingerprint?, for id: String) {
+        guard let position = tracks.firstIndex(where: { $0.id == id }) else { return }
+        tracks[position].setFingerprint(fingerprint)
+    }
+    public var duplicateGroups: [[LocalTrack]] {
+        let checked = tracks.filter { $0.fingerprint != nil }
+        return Dictionary(grouping: checked, by: { "\($0.fingerprint!.size):\($0.fingerprint!.sha256)" }).values
+            .filter { $0.count > 1 }
+            .map { $0.sorted { $0.added == $1.added ? $0.id < $1.id : $0.added < $1.added } }
+            .sorted { $0[0].song.title.localizedStandardCompare($1[0].song.title) == .orderedAscending }
     }
     public var songs: [Song] {
         tracks.map(\.song).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }

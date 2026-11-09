@@ -11,7 +11,7 @@ struct SettingsView: View {
                 Button("Import music", systemImage: "plus") {
                     store.importMode = .files
                 }
-                .disabled(store.importing)
+                .disabled(store.libraryBusy)
                 Button {
                     Task { await store.refreshLibraryFromDisk() }
                 } label: {
@@ -20,7 +20,7 @@ struct SettingsView: View {
                         Spacer()
                         if store.refreshingLibrary { ProgressView() }
                     }
-                }.disabled(store.importing || store.refreshingLibrary)
+                }.disabled(store.libraryBusy)
                 Button {
                     Task { await store.refreshImportedMetadata(force: true) }
                 } label: {
@@ -29,8 +29,13 @@ struct SettingsView: View {
                         Spacer()
                         if store.refreshingMetadata { ProgressView() }
                     }
-                }.disabled(store.importing || store.refreshingMetadata)
-                if store.importing {
+                }.disabled(store.libraryBusy)
+                NavigationLink {
+                    DuplicateReviewView()
+                } label: {
+                    Label("Review duplicates", systemImage: "square.on.square")
+                }.disabled(store.libraryBusy)
+                if store.importing || store.refreshingLibrary {
                     HStack {
                         ProgressView(); Text(store.importProgress).foregroundStyle(theme.secondary)
                     }

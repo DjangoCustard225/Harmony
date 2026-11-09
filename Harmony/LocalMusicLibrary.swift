@@ -2,6 +2,8 @@ import AVFoundation
 import UIKit
 import HarmonyCore
 
+enum MusicImportResult { case added, duplicate }
+
 /// Owns imported copies: playback never depends on a provider URL or a network connection.
 @MainActor
 final class LocalMusicLibrary {
@@ -22,7 +24,7 @@ final class LocalMusicLibrary {
         try JSONEncoder().encode(value).write(to: root.appendingPathComponent("Library.json"), options: .atomic)
         index = value
     }
-    func importFile(_ source: URL) async throws {
+    func importFile(_ source: URL) async throws -> MusicImportResult {
         let access = source.startAccessingSecurityScopedResource()
         defer { if access { source.stopAccessingSecurityScopedResource() } }
         let id = UUID().uuidString
@@ -46,6 +48,12 @@ final class LocalMusicLibrary {
             if let error = coordinationError { throw error }
             if let error = copyError { throw error }
         }.value
+        let fingerprint = try await Self.fingerprint(destination)
+        if index.tracks.contains(where: {
+            $0.fingerprint?.size == fingerprint.size && $0.fingerprint?.sha256 == fingerprint.sha256
+        }) {
+            return .duplicate
+        }
         let asset = AVURLAsset(url: destination)
         guard try await asset.load(.isPlayable), !(try await asset.loadTracks(withMediaType: .audio)).isEmpty else {
             throw LocalLibraryError.unsupported(source.lastPathComponent)
@@ -61,26 +69,63 @@ final class LocalMusicLibrary {
             artist: metadata.artist, album: metadata.album, albumArtist: metadata.albumArtist,
             duration: metadata.duration.flatMap { $0.isFinite ? Int(max(0, $0)) : nil },
             track: metadata.track, disc: metadata.disc, artworkFilename: artworkFilename, lyrics: metadata.lyrics,
-            metadata: metadata, originalFilename: source.lastPathComponent, metadataVersion: LocalMetadataReader.version
+            metadata: metadata, originalFilename: source.lastPathComponent,
+            metadataVersion: LocalMetadataReader.version,
+            fingerprint: fingerprint
         )
         var updated = index
         updated.append(entry)
         try save(updated)
         committed = true
+        return .added
     }
 
-    /// Finds audio files placed directly in Harmony's Music folder and imports any
-    /// that are not already represented in the library index.
-    func refreshLibrary() async throws -> Int {
-        let scan = try MusicFolderScan.scan(root)
-        let indexed = Set(index.tracks.map { $0.filename })
-        let unindexed = scan.files.filter { !indexed.contains($0.lastPathComponent) }
-        var added = 0
-        for file in unindexed {
-            try await importFile(file)
-            added += 1
+    func filesForRefresh() async throws -> MusicFolderScan {
+        let directory = root
+        return try await Task.detached(priority: .userInitiated) { try MusicFolderScan.scan(directory) }.value
+    }
+
+    func isIndexedFile(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL
+        return index.tracks.contains { root.appendingPathComponent($0.filename).standardizedFileURL == path }
+    }
+
+    /// Updates legacy and changed files without loading their contents into memory.
+    func refreshFingerprints() async throws -> [String] {
+        var updated = index
+        var failures: [String] = []
+        var changed = false
+        for track in index.tracks {
+            let url = root.appendingPathComponent(track.filename)
+            do {
+                let fingerprint = try await Self.fingerprint(url, cached: track.fingerprint)
+                if fingerprint != track.fingerprint {
+                    updated.setFingerprint(fingerprint, for: track.id)
+                    changed = true
+                }
+            } catch {
+                updated.setFingerprint(nil, for: track.id)
+                if track.fingerprint != nil { changed = true }
+                failures.append("\(track.originalFilename ?? track.filename): \(error.localizedDescription)")
+            }
         }
-        return added
+        if changed { try save(updated) }
+        return failures
+    }
+
+    private nonisolated static func fingerprint(_ url: URL, cached: FileFingerprint? = nil) async throws
+        -> FileFingerprint
+    {
+        try await Task.detached(priority: .userInitiated) {
+            var coordinationError: NSError?
+            var result: Result<FileFingerprint, Error>?
+            NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
+                result = Result { try FileFingerprint.read(coordinated, cached: cached) }
+            }
+            if let coordinationError { throw coordinationError }
+            guard let result else { throw CocoaError(.fileReadUnknown) }
+            return try result.get()
+        }.value
     }
     private func embeddedArtwork(in url: URL) async -> Data? {
         if url.pathExtension.lowercased() == "flac",
@@ -136,7 +181,7 @@ final class LocalMusicLibrary {
                 track: metadata?.track ?? song.track, disc: metadata?.disc ?? song.discNumber,
                 artworkFilename: artworkFilename, lyrics: metadata?.lyrics ?? track.lyrics, added: track.added,
                 metadata: metadata, originalFilename: track.originalFilename,
-                metadataVersion: LocalMetadataReader.version)
+                metadataVersion: LocalMetadataReader.version, fingerprint: track.fingerprint)
             var updated = index
             updated.replace(updatedTrack)
             try save(updated)
