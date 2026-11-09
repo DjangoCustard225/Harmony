@@ -33,6 +33,10 @@ final class AppStore {
     private(set) var reviewingDuplicates = false
     private(set) var duplicateGroups: [[LocalTrack]] = []
     private(set) var duplicateWarnings: [String] = []
+    private(set) var duplicateProgress = ""
+    private(set) var duplicateResult: String?
+    private(set) var duplicateScanFailed = false
+    private(set) var removingDuplicates = false
     var libraryBusy: Bool { importing || refreshingMetadata || refreshingLibrary || reviewingDuplicates }
     private(set) var importProgress = ""
     private struct ImportSummary {
@@ -214,21 +218,32 @@ final class AppStore {
     func scanDuplicates() async {
         guard !libraryBusy, let library else { return }
         reviewingDuplicates = true
+        duplicateResult = nil
+        duplicateScanFailed = false
+        duplicateWarnings = []
         defer { reviewingDuplicates = false; Task { await processImports() } }
         do {
-            duplicateWarnings = try await library.refreshFingerprints()
+            duplicateWarnings = try await library.refreshFingerprints { checked, total in
+                self.duplicateProgress = "Checked \(checked) of \(total) songs"
+            }
             duplicateGroups = library.index.duplicateGroups
-        } catch { duplicateWarnings = [error.localizedDescription]; duplicateGroups = [] }
+        } catch { duplicateWarnings = [error.localizedDescription]; duplicateScanFailed = true }
     }
     /// A nil selection removes every duplicate after a fresh scan, keeping the oldest copy.
     func removeDuplicates(_ ids: Set<String>? = nil) async {
         guard !libraryBusy, let library, ids?.isEmpty != true else { return }
         reviewingDuplicates = true
-        defer { reviewingDuplicates = false; Task { await processImports() } }
+        removingDuplicates = true
+        duplicateResult = nil
+        duplicateScanFailed = false
+        defer { reviewingDuplicates = false; removingDuplicates = false; Task { await processImports() } }
         do {
-            duplicateWarnings = try await library.refreshFingerprints()
+            duplicateWarnings = try await library.refreshFingerprints { checked, total in
+                self.duplicateProgress = "Rechecking \(checked) of \(total) songs"
+            }
             let currentGroups = library.index.duplicateGroups
             var removed = 0
+            var removedBytes: Int64 = 0
             for group in currentGroups {
                 let chosen =
                     ids.map { selection in group.filter { selection.contains($0.id) } }
@@ -239,13 +254,19 @@ final class AppStore {
                         try library.remove(track.id)
                         if player.queue.songs.contains(where: { $0.id == track.id }) { player.stop() }
                         removed += 1
+                        removedBytes += track.fingerprint?.size ?? 0
                     } catch { duplicateWarnings.append("\(track.song.title): \(error.localizedDescription)") }
+                    duplicateProgress = "Removed \(removed) copies"
+                    await Task.yield()
                 }
             }
             duplicateGroups = library.index.duplicateGroups
             if removed > 0 { libraryDidChange() }
-            notice = "Removed \(removed) duplicate\(removed == 1 ? "" : "s")."
-        } catch { duplicateWarnings = [error.localizedDescription] }
+            duplicateResult =
+                removed == 0
+                ? "No copies removed. The library may have changed."
+                : "Removed \(removed) duplicate\(removed == 1 ? "" : "s") · \(ByteCountFormatter.string(fromByteCount: removedBytes, countStyle: .file)) freed"
+        } catch { duplicateWarnings = [error.localizedDescription]; duplicateScanFailed = true }
     }
     func removeSong(_ song: Song) {
         guard !libraryBusy else { notice = "Wait for the library operation to finish."; return }

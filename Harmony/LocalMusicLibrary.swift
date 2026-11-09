@@ -91,11 +91,13 @@ final class LocalMusicLibrary {
     }
 
     /// Updates legacy and changed files without loading their contents into memory.
-    func refreshFingerprints() async throws -> [String] {
+    func refreshFingerprints(progress: ((Int, Int) -> Void)? = nil) async throws -> [String] {
         var updated = index
         var failures: [String] = []
         var changed = false
-        for track in index.tracks {
+        let tracks = index.tracks
+        progress?(0, tracks.count)
+        for (position, track) in tracks.enumerated() {
             let url = root.appendingPathComponent(track.filename)
             do {
                 let fingerprint = try await Self.fingerprint(url, cached: track.fingerprint)
@@ -108,6 +110,7 @@ final class LocalMusicLibrary {
                 if track.fingerprint != nil { changed = true }
                 failures.append("\(track.originalFilename ?? track.filename): \(error.localizedDescription)")
             }
+            progress?(position + 1, tracks.count)
         }
         if changed { try save(updated) }
         return failures
@@ -192,10 +195,17 @@ final class LocalMusicLibrary {
 
     func remove(_ id: String) throws {
         guard let track = index.tracks.first(where: { $0.id == id }) else { return }
+        let previous = index
         var updated = index
         updated.remove(id)
         try save(updated)
-        try? FileManager.default.removeItem(at: root.appendingPathComponent(track.filename))
+        let file = root.appendingPathComponent(track.filename)
+        do {
+            if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+        } catch {
+            try save(previous)
+            throw error
+        }
         if let art = track.artworkFilename { try? FileManager.default.removeItem(at: root.appendingPathComponent(art)) }
     }
     func fileURL(_ id: String) throws -> URL {
