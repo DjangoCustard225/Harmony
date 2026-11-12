@@ -53,6 +53,31 @@ final class QueueAndLyricsTests: XCTestCase {
         XCTAssertEqual(queue.index, 1)
     }
 
+    func testPlayNextKeepsItsPlaceWhenShuffleToggles() throws {
+        let songs = try decodeSongs()
+        let extra = try JSONDecoder().decode(Song.self, from: Data(#"{"id":"4","title":"Four"}"#.utf8))
+        var queue = PlaybackQueue()
+        queue.replace(songs, startingAt: 0)
+        queue.append(extra, next: true)
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "4", "2", "3"])
+        queue.toggleShuffle()
+        queue.toggleShuffle()
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "4", "2", "3"])
+
+        queue.replace(songs, startingAt: 1)
+        queue.toggleShuffle()
+        queue.append(extra, next: true)
+        XCTAssertEqual(queue.songs[1].id, "4")
+        queue.toggleShuffle()
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "2", "4", "3"])
+        XCTAssertEqual(queue.current?.id, "2")
+
+        queue.toggleShuffle()
+        queue.append(extra, next: false)
+        queue.toggleShuffle()
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "2", "4", "3", "4"])
+    }
+
     private func decodeSongs() throws -> [Song] {
         try JSONDecoder().decode(
             [Song].self,

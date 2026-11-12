@@ -241,10 +241,37 @@ public actor ArtistProfileClient {
         )
         .replacingOccurrences(of: #"(?i)<br\s*/?>|</(?:p|div)>"#, with: "\n\n", options: .regularExpression)
         .replacingOccurrences(of: #"<[^>]*>"#, with: "", options: .regularExpression)
-        for (entity, character) in ["&amp;": "&", "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&nbsp;": " "] {
-            text = text.replacingOccurrences(of: entity, with: character)
-        }
+        text = decodeEntities(text)
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : text
+    }
+    /// Decodes each entity once, so "&amp;lt;" becomes the literal text "&lt;".
+    private static func decodeEntities(_ text: String) -> String {
+        let named: [String: String] = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " "]
+        var result = ""
+        var rest = text[...]
+        while let ampersand = rest.firstIndex(of: "&") {
+            result += rest[..<ampersand]
+            let body = rest[rest.index(after: ampersand)...]
+            if let semicolon = body.prefix(10).firstIndex(of: ";") {
+                let name = String(body[..<semicolon])
+                var decoded = named[name]
+                if decoded == nil, name.hasPrefix("#") {
+                    let digits = name.dropFirst()
+                    let value =
+                        digits.first == "x" || digits.first == "X"
+                        ? UInt32(digits.dropFirst(), radix: 16) : UInt32(digits, radix: 10)
+                    decoded = value.flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+                }
+                if let decoded {
+                    result += decoded
+                    rest = body[body.index(after: semicolon)...]
+                    continue
+                }
+            }
+            result += "&"
+            rest = body
+        }
+        return result + rest
     }
 }

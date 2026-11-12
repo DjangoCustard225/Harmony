@@ -4,6 +4,15 @@ public struct MusicFolderScan: Sendable {
     public let files: [URL]
     public let warnings: [String]
 
+    /// The slash-separated path of `file` inside `directory`, or nil when it lies outside it.
+    /// Symbolic links such as iOS's /var → /private/var are resolved on both sides first.
+    public static func relativePath(of file: URL, in directory: URL) -> String? {
+        let base = directory.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        let parts = file.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        guard parts.count > base.count, Array(parts.prefix(base.count)) == base else { return nil }
+        return parts.dropFirst(base.count).joined(separator: "/")
+    }
+
     /// Discovery only. The importer checks actual playability before adding a file.
     public static func scan(_ directory: URL) throws -> MusicFolderScan {
         let rootValues = try directory.resourceValues(forKeys: [.isDirectoryKey])

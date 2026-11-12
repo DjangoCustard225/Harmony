@@ -185,6 +185,49 @@ struct SongRow: View {
     }
 }
 
+/// Centered empty page with a direct way to import music.
+struct LibraryEmptyState: View {
+    @Environment(AppStore.self) private var store
+    let title: String
+    let symbol: String
+    let message: String
+    var body: some View {
+        if store.library == nil {
+            ContentUnavailableView(
+                "Library unavailable", systemImage: "exclamationmark.triangle",
+                description: Text("Harmony couldn’t open your music. Restart the app to try again."))
+        } else {
+            ContentUnavailableView {
+                Label(title, systemImage: symbol)
+            } description: {
+                Text(message)
+            } actions: {
+                ImportMusicButton()
+            }
+        }
+    }
+}
+
+struct ImportMusicButton: View {
+    @Environment(AppStore.self) private var store
+    var body: some View {
+        Button {
+            store.importMode = .files
+        } label: {
+            if store.importing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Importing…")
+                }
+            } else {
+                Label("Import music", systemImage: "plus")
+            }
+        }
+        .buttonStyle(.glass).controlSize(.large)
+        .disabled(store.libraryBusy)
+    }
+}
+
 struct SectionTitle: View {
     let title: String
     var body: some View {

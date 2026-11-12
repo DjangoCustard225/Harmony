@@ -16,6 +16,13 @@ final class ArtistProfileTests: XCTestCase {
         XCTAssertEqual(profile.biographyCredit?.url.absoluteString, "https://www.theaudiodb.com/artist/123")
         XCTAssertEqual(profile.photoCredit?.name, "TheAudioDB")
     }
+    func testBiographyEntitiesDecodeOnceIncludingNumericForms() throws {
+        let data = Data(
+            #"{"artists":[{"idArtist":"1","strArtist":"A","strBiography":"&lt;3 &amp;lt;b&amp;gt; &#233;&#x41; &#39;x&apos; &bogus; & end&amp;"}]}"#
+                .utf8)
+        let profile = try XCTUnwrap(ArtistProfileClient.audioDBProfile(data, name: "A"))
+        XCTAssertEqual(profile.biography, "<3 &lt;b&gt; éA 'x' &bogus; & end&")
+    }
     func testAudioDBSupportsLegacyBiographyAndRejectsWrongIdentity() throws {
         let data = Data(
             #"{"artists":[{"idArtist":"123","strArtist":"Björk","strBiographyEN":"Singer.","strMusicBrainzID":"id-one","strArtistThumb":"http://example.org/photo.jpg"}]}"#

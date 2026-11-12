@@ -58,6 +58,8 @@ final class PlayerStore: ObservableObject {
     private var wantsPlayback = false
     private var atEnd = false
     private var endDuringSeek = false
+    /// A position to restore once the next item is ready, used when a queued copy is swapped.
+    private var pendingStart: Double?
     var current: Song? { queue.current }
 
     init(artwork: ArtworkCache) {
@@ -270,6 +272,20 @@ final class PlayerStore: ObservableObject {
         }
     }
 
+    /// Takes removed songs out of the queue without interrupting playback. A removed current song
+    /// gives way to the next one in the same play/pause state; a replaced copy resumes where it was.
+    func removeFromQueue(_ ids: Set<String>, replacements: [String: Song] = [:]) {
+        guard current != nil else { return }
+        let playing = wantsPlayback
+        let position = elapsed
+        switch queue.remove(ids, replacements: replacements) {
+        case .unchanged: break
+        case .replaced: loadCurrent(autoplay: playing, at: position)
+        case .advanced: loadCurrent(autoplay: playing)
+        case .ended: stop()
+        }
+    }
+
     func cycleRepeat() {
         switch queue.repeatMode {
         case .off: queue.repeatMode = .all
@@ -285,6 +301,7 @@ final class PlayerStore: ObservableObject {
         resumeAfterInterruption = false
         atEnd = false
         endDuringSeek = false
+        pendingStart = nil
         canSeek = false
         player.currentItem?.cancelPendingSeeks()
         player.pause()
@@ -318,7 +335,7 @@ final class PlayerStore: ObservableObject {
         try session.setActive(true)
     }
 
-    private func loadCurrent() {
+    private func loadCurrent(autoplay: Bool = true, at start: Double = 0) {
         guard let song = current, let library else { return }
         let playbackID = UUID()
         self.playbackID = playbackID
@@ -330,6 +347,7 @@ final class PlayerStore: ObservableObject {
         wantsPlayback = false
         atEnd = false
         endDuringSeek = false
+        pendingStart = start > 0 ? start : nil
         mediaArtwork = nil
         artworkRevision = nil
         cancelItemWork()
@@ -337,7 +355,8 @@ final class PlayerStore: ObservableObject {
         player.pause()
         player.replaceCurrentItem(with: nil)
         do {
-            try activateAudio()
+            // Leave other apps' audio alone when the new item starts paused.
+            if autoplay { try activateAudio() }
             let asset = AVURLAsset(
                 url: try library.fileURL(song.id),
                 options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
@@ -346,6 +365,12 @@ final class PlayerStore: ObservableObject {
                 Task { @MainActor in
                     guard let self, self.playbackID == playbackID, self.player.currentItem === item else { return }
                     self.refreshTiming(for: item)
+                    if item.status == .readyToPlay, let start = self.pendingStart {
+                        // Start only after restoring the position, so the beginning isn't heard.
+                        self.pendingStart = nil
+                        self.seek(start)
+                        if self.wantsPlayback { self.player.play() }
+                    }
                     if item.status == .failed {
                         self.fail(
                             "This audio format could not be played. Import a supported file and try again."
@@ -354,8 +379,8 @@ final class PlayerStore: ObservableObject {
                 }
             }
             player.replaceCurrentItem(with: item)
-            wantsPlayback = true
-            player.play()
+            wantsPlayback = autoplay
+            if autoplay && pendingStart == nil { player.play() }
             updateNowPlaying()
             loadPreciseTiming(asset: asset, item: item, playbackID: playbackID)
             if let id = song.coverArt {

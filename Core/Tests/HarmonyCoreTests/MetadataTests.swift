@@ -40,15 +40,40 @@ final class MetadataTests: XCTestCase {
         XCTAssertTrue(lyrics.synced)
         XCTAssertEqual(lyrics.line.map(\.start), [1250, 2500, 63000])
         XCTAssertEqual(lyrics.line.map(\.value), ["Example", "Example", "Next"])
-        XCTAssertEqual(lyrics.offset, -200)
-        XCTAssertEqual(lyrics.seekTime(for: 0), 1.45)
-        XCTAssertNil(lyrics.activeLineIndex(at: 1.4))
-        XCTAssertEqual(lyrics.activeLineIndex(at: 1.45), 0)
+        // A positive LRC offset shows every line sooner.
+        XCTAssertEqual(lyrics.offset, 200)
+        XCTAssertEqual(try XCTUnwrap(lyrics.seekTime(for: 0)), 1.05, accuracy: 0.000001)
+        XCTAssertNil(lyrics.activeLineIndex(at: 1.04))
+        XCTAssertEqual(lyrics.activeLineIndex(at: 1.05), 0)
+        XCTAssertEqual(EmbeddedLyrics.parse("[offset:-300]\n[00:01.00]Late").offset, -300)
+        XCTAssertNil(EmbeddedLyrics.parse("[offset:-300]\n[00:01.00]Late").activeLineIndex(at: 1.2))
         let plain = EmbeddedLyrics.parse("First\r\n\r\nSecond")
         XCTAssertFalse(plain.synced)
         XCTAssertEqual(plain.line.map(\.value), ["First", "", "Second"])
         XCTAssertFalse(EmbeddedLyrics.parse("[00:bad]Text").synced)
         XCTAssertFalse(EmbeddedLyrics.parse("[00:99]Text").synced)
+    }
+    func testLegacyColonHundredthsAndHourTimestamps() {
+        let legacy = EmbeddedLyrics.parse("[00:12:34]Hundredths\n[01:02:5]Tenths\n[00:03:250]Milliseconds")
+        XCTAssertEqual(legacy.line.map(\.start), [3250, 12340, 62500])
+        XCTAssertEqual(legacy.line.map(\.value), ["Milliseconds", "Hundredths", "Tenths"])
+        XCTAssertEqual(EmbeddedLyrics.parse("[1:02:03.50]Hours").line.map(\.start), [3_723_500])
+        XCTAssertFalse(EmbeddedLyrics.parse("[00:75:10]Bad seconds").synced)
+        XCTAssertFalse(EmbeddedLyrics.parse("[00:12:-5]Negative").synced)
+        XCTAssertFalse(EmbeddedLyrics.parse("[00:12:1234]Too long").synced)
+    }
+    func testFLACWithPrependedID3TagsStillReadsNativeMetadata() throws {
+        let native = flac(["TITLE=Tagged"])
+        let id3Body = Data(repeating: 0, count: 200)
+        // Syncsafe size 200 = 0x01 0x48, with a footer flag adding 10 more bytes.
+        let id3 = Data("ID3".utf8) + Data([4, 0, 0, 0, 0, 1, 0x48]) + id3Body
+        let withFooter = Data("ID3".utf8) + Data([4, 0, 0x10, 0, 0, 1, 0x48]) + id3Body + Data(repeating: 0, count: 10)
+        XCTAssertEqual(try parse(id3 + native)?.title, "Tagged")
+        XCTAssertEqual(try parse(id3 + id3 + native)?.title, "Tagged")
+        XCTAssertEqual(try parse(withFooter + native)?.title, "Tagged")
+        XCTAssertNil(try parse(id3 + Data("not FLAC".utf8)))
+        XCTAssertNil(try parse(Data("ID3".utf8) + Data([4, 0, 0, 0x80, 0, 0, 0])))
+        XCTAssertNil(try parse(Data("ID3".utf8) + Data([4, 0, 0, 0x7f, 0x7f, 0x7f, 0x7f])))
     }
     func testLegacyLibraryDecodesAndMetadataRefreshKeepsIdentity() throws {
         let json =

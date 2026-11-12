@@ -16,8 +16,8 @@ public enum EmbeddedLyrics {
                 if let start = timestamp(tag) {
                     starts.append(start)
                 } else if tag.lowercased().hasPrefix("offset:"), let value = Double(tag.dropFirst(7)), value.isFinite {
-                    // LRC positive offsets delay lines; StructuredLyrics uses an advancing offset.
-                    offset = -value; header = true
+                    // LRC positive offsets show lines sooner, matching StructuredLyrics' advancing offset.
+                    offset = value; header = true
                 } else if ["ti:", "ar:", "al:", "by:", "re:", "ve:", "length:"].contains(where: {
                     tag.lowercased().hasPrefix($0)
                 }) {
@@ -46,6 +46,14 @@ public enum EmbeddedLyrics {
     }
     private static func timestamp(_ text: String) -> Double? {
         let parts = text.split(separator: ":", omittingEmptySubsequences: false)
+        // Legacy [mm:ss:xx] uses a colon before hundredths; [h:mm:ss.xx] always has a decimal point.
+        if parts.count == 3, (1...3).contains(parts[2].count),
+            parts[2].allSatisfy({ $0.isASCII && $0.isNumber }), let fraction = Int(parts[2]), fraction >= 0,
+            let minutes = Int(parts[0]), minutes >= 0, let seconds = Int(parts[1]), (0..<60).contains(seconds)
+        {
+            let scale = parts[2].count == 3 ? 1.0 : parts[2].count == 2 ? 10.0 : 100.0
+            return (Double(minutes) * 60 + Double(seconds)) * 1000 + Double(fraction) * scale
+        }
         guard parts.count == 2 || parts.count == 3, let minutes = Int(parts[parts.count - 2]), minutes >= 0,
             let seconds = Double(parts.last!), seconds.isFinite, seconds >= 0, seconds < 60
         else { return nil }

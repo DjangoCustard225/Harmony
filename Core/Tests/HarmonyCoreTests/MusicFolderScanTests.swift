@@ -17,6 +17,28 @@ final class MusicFolderScanTests: XCTestCase {
             XCTAssertTrue(scan.warnings.isEmpty)
         }
     }
+    func testRelativePathsStayInsideTheFolder() throws {
+        try withFolder { root in
+            let nested = root.appendingPathComponent("Album/Disc 1", isDirectory: true)
+            try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+            let song = nested.appendingPathComponent("Song.flac")
+            try Data().write(to: song)
+            XCTAssertEqual(MusicFolderScan.relativePath(of: song, in: root), "Album/Disc 1/Song.flac")
+            let dotted = root.appendingPathComponent("Album/../Album/Disc 1/Song.flac")
+            XCTAssertEqual(MusicFolderScan.relativePath(of: dotted, in: root), "Album/Disc 1/Song.flac")
+            XCTAssertNil(MusicFolderScan.relativePath(of: root, in: root))
+            XCTAssertNil(MusicFolderScan.relativePath(of: root.deletingLastPathComponent(), in: root))
+            let sibling = root.deletingLastPathComponent().appendingPathComponent(root.lastPathComponent + "x/a.mp3")
+            XCTAssertNil(MusicFolderScan.relativePath(of: sibling, in: root))
+            // Paths reached through a symbolic link still resolve inside the folder.
+            let link = root.deletingLastPathComponent().appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root)
+            defer { try? FileManager.default.removeItem(at: link) }
+            XCTAssertEqual(
+                MusicFolderScan.relativePath(of: link.appendingPathComponent("Album/Disc 1/Song.flac"), in: root),
+                "Album/Disc 1/Song.flac")
+        }
+    }
     func testSkipsHiddenFilesDirectoriesAndSymbolicLinks() throws {
         try withFolder { root in
             let hidden = root.appendingPathComponent(".hidden", isDirectory: true)

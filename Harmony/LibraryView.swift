@@ -13,15 +13,29 @@ struct LibraryView: View {
     let category: LibraryCategory
     private var albums: [Album] { store.albums }
     private var songs: [Song] { store.songs }
+    private var isEmpty: Bool {
+        switch category {
+        case .albums: albums.isEmpty
+        case .artists: store.artists.isEmpty
+        case .songs: songs.isEmpty
+        }
+    }
     var body: some View {
         @Bindable var store = store
-        ScrollView {
-            content.padding(.horizontal, 16).padding(.vertical, 12).readingWidth()
-                .background { NativeScrollToTop().frame(width: 0, height: 0) }
+        Group {
+            if isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    content.padding(.horizontal, 16).padding(.vertical, 12).readingWidth()
+                        .background { NativeScrollToTop().frame(width: 0, height: 0) }
+                }
+            }
         }
         .navigationTitle(category.title)
         .toolbar {
-            if category == .albums {
+            // Sorting has nothing to act on in an empty library.
+            if category == .albums && !isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("Sort albums", selection: $store.albumOrder) {
@@ -34,7 +48,7 @@ struct LibraryView: View {
                     .accessibilityLabel("Sort albums")
                 }
             }
-            if category == .songs {
+            if category == .songs && !isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Section("Sort by") {
@@ -60,50 +74,47 @@ struct LibraryView: View {
     @ViewBuilder private var content: some View {
         switch category {
         case .albums:
-            if !albums.isEmpty {
-                AlbumGrid(albums: albums)
-            } else {
-                empty(
-                    "No albums yet", symbol: "square.stack",
-                    message: "Import music from Files in Settings.")
-            }
+            AlbumGrid(albums: albums)
         case .artists:
-            if store.artists.isEmpty {
-                empty("No artists yet", symbol: "person.2", message: "Import music from Files to browse its artists.")
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(store.artists) { artist in
-                        VStack(spacing: 0) {
-                            NavigationLink {
-                                ArtistDetailView(artist: artist)
-                            } label: {
-                                ArtistRow(artist: artist)
-                            }.buttonStyle(.plain)
-                            Divider().overlay(theme.border).padding(.leading, 74)
-                        }
+            LazyVStack(spacing: 0) {
+                ForEach(store.artists) { artist in
+                    VStack(spacing: 0) {
+                        NavigationLink {
+                            ArtistDetailView(artist: artist)
+                        } label: {
+                            ArtistRow(artist: artist)
+                        }.buttonStyle(.plain)
+                        Divider().overlay(theme.border).padding(.leading, 74)
                     }
                 }
             }
         case .songs:
-            if songs.isEmpty {
-                empty(
-                    "No songs yet", symbol: "music.note",
-                    message: "Import music from Files in Settings.")
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                        VStack(spacing: 0) {
-                            SongRow(song: song) { player.play(songs, at: index) }
-                            Divider().overlay(theme.border).padding(.leading, 66)
-                        }
+            LazyVStack(spacing: 0) {
+                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+                    VStack(spacing: 0) {
+                        SongRow(song: song) { player.play(songs, at: index) }
+                        Divider().overlay(theme.border).padding(.leading, 66)
                     }
                 }
             }
         }
     }
 
-    private func empty(_ title: String, symbol: String, message: String) -> some View {
-        ContentUnavailableView(title, systemImage: symbol, description: Text(message)).padding(.vertical, 24)
+    @ViewBuilder private var emptyState: some View {
+        switch category {
+        case .albums:
+            LibraryEmptyState(
+                title: "No albums yet", symbol: "square.stack",
+                message: "Import songs from Files and they’ll appear here, grouped by album.")
+        case .artists:
+            LibraryEmptyState(
+                title: "No artists yet", symbol: "person.2",
+                message: "Artists appear here once you import their music.")
+        case .songs:
+            LibraryEmptyState(
+                title: "No songs yet", symbol: "music.note",
+                message: "Import songs from Files to start listening.")
+        }
     }
 }
 

@@ -15,26 +15,32 @@ struct MusicSearchView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if term.isEmpty {
-                    ContentUnavailableView(
-                        "Search your library", systemImage: "magnifyingglass",
-                        description: Text("Find albums, artists, and tracks.")
-                    ).padding(.top, 24)
-                } else {
-                    Picker("Search filter", selection: $filter) {
-                        ForEach(SearchFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }.pickerStyle(.segmented)
-                    if !results.isEmpty { resultContent }
-                    if loading {
-                        ProgressView().accessibilityLabel("Searching").frame(maxWidth: .infinity).padding(.vertical, 20)
-                    } else if visibleResultsEmpty {
-                        ContentUnavailableView.search(text: term)
-                    }
+        Group {
+            if store.songs.isEmpty {
+                LibraryEmptyState(
+                    title: "Nothing to search", symbol: "magnifyingglass",
+                    message: "Import music to search your albums, artists and tracks.")
+            } else if term.isEmpty {
+                ContentUnavailableView(
+                    "Search your library", systemImage: "magnifyingglass",
+                    description: Text("Find albums, artists and tracks."))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Picker("Search filter", selection: $filter) {
+                            ForEach(SearchFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }.pickerStyle(.segmented)
+                        if !results.isEmpty { resultContent }
+                        if loading {
+                            ProgressView().accessibilityLabel("Searching").frame(maxWidth: .infinity)
+                                .padding(.vertical, 20)
+                        } else if visibleResultsEmpty {
+                            ContentUnavailableView.search(text: term).padding(.top, 24)
+                        }
+                    }.padding(16).readingWidth()
+                        .background { NativeScrollToTop().frame(width: 0, height: 0) }
                 }
-            }.padding(16).readingWidth()
-                .background { NativeScrollToTop().frame(width: 0, height: 0) }
+            }
         }
         .navigationTitle("Search").pageBackground()
         .task(id: term) {
