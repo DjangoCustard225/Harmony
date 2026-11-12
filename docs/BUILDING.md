@@ -60,4 +60,12 @@ Design references: [Apple’s app icon guidelines](https://developer.apple.com/d
 
 ## TestFlight
 
-The `harmony-testflight` workflow in `codemagic.yaml` signs with an App Store distribution profile and uploads to App Store Connect. It needs a Codemagic App Store Connect integration named `harmony-asc`, created from an App Store Connect API key with the App Manager role. Start it by hand in Codemagic. It raises the build number above TestFlight's latest, so the number in `Harmony/Info.plist` only needs changing when the version changes. Internal testers get processed builds without beta review.
+The **Upload to TestFlight** workflow (`.github/workflows/testflight.yml`) runs by hand from the repository's Actions tab. It tests, archives with Xcode automatic signing through an App Store Connect API key, and uploads the build. Xcode creates the distribution certificate and App Store profile itself, so nothing is stored in the repository.
+
+It needs three repository secrets (Settings → Secrets and variables → Actions):
+
+- `ASC_KEY_ID`: the API key's Key ID.
+- `ASC_ISSUER_ID`: the Issuer ID shown above the key list in App Store Connect.
+- `ASC_PRIVATE_KEY`: the full contents of the `.p8` file, including the BEGIN and END lines. `Scripts/WriteAppStoreKey.sh` tolerates altered line breaks and rejects an unreadable key with a clear message.
+
+Each run sets the build number to `run number × 10 + attempt`, so repeated uploads never collide. The marketing version still comes from `Harmony/Info.plist`. Internal testers get processed builds without beta review.

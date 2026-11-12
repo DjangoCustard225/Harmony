@@ -1,0 +1,111 @@
+name: Upload to TestFlight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      TEAM_ID: V8A4AS5K3W
+      BUNDLE_ID: app.harmony.music
+      KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the App Store Connect secrets are set
+        shell: bash
+        run: |
+          missing=0
+          for name in KEY_ID ISSUER_ID APP_STORE_CONNECT_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Add the repository secret for $name (ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY)."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Show toolchain versions
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Test HarmonyCore
+        run: swift test --package-path Core
+
+      - name: Check Swift formatting
+        run: swift format lint --strict --recursive Harmony Core/Sources Core/Tests Scripts Package.swift Core/Package.swift
+
+      - name: Set a unique build number
+        shell: bash
+        run: |
+          # Each run, and each re-run of a run, gets a higher number than the one before.
+          BUILD=$((GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT))
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" Harmony/Info.plist
+          echo "Uploading $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Harmony/Info.plist) (build $BUILD)"
+
+      - name: Generate the Xcode project
+        run: swift Scripts/GenerateXcodeProject.swift
+
+      - name: Archive, sign and upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Xcode creates and manages the distribution certificate and App Store profile
+          # through the App Store Connect API key, then uploads the build itself.
+          KEY_FILE="$RUNNER_TEMP/AuthKey_${KEY_ID}.p8"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          bash Scripts/WriteAppStoreKey.sh "$KEY_FILE"
+          AUTH=(
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$KEY_FILE"
+            -authenticationKeyID "$KEY_ID"
+            -authenticationKeyIssuerID "$ISSUER_ID"
+          )
+          mkdir -p build/logs
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store-connect</string>
+          <key>destination</key><string>upload</string>
+          <key>teamID</key><string>$TEAM_ID</string>
+          <key>signingStyle</key><string>automatic</string>
+          <key>uploadSymbols</key><true/>
+          <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          archive() {
+            xcodebuild archive -project Harmony.xcodeproj -scheme Harmony -configuration Release \
+              -destination 'generic/platform=iOS' -archivePath build/Harmony.xcarchive \
+              DEVELOPMENT_TEAM="$TEAM_ID" "$@"
+          }
+          if ! archive "${AUTH[@]}" 2>&1 | tee build/logs/archive.log; then
+            # A team with no registered devices cannot create a development profile for the archive.
+            # Build it unsigned instead; the export step signs it for the App Store.
+            echo "::warning::Signed archive failed; retrying unsigned and signing during export."
+            rm -rf build/Harmony.xcarchive
+            archive CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/logs/archive-unsigned.log
+          fi
+          xcodebuild -exportArchive -archivePath build/Harmony.xcarchive \
+            -exportPath build/export -exportOptionsPlist build/ExportOptions.plist "${AUTH[@]}" \
+            2>&1 | tee build/logs/export.log
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-logs
+          path: build/logs/
+          if-no-files-found: ignore
