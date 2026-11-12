@@ -27,3 +27,66 @@ workflows:
     artifacts:
       - dist/Harmony.ipa
       - /tmp/xcodebuild_logs/*.log
+
+  harmony-testflight:
+    name: Harmony TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    # Started by hand in Codemagic; it is not triggered by pushes.
+    integrations:
+      app_store_connect: harmony-asc
+    environment:
+      xcode: "27.2"
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: app.harmony.music
+      vars:
+        BUNDLE_ID: app.harmony.music
+        APP_STORE_APPLE_ID: 6833773273
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/org.swift.swiftpm
+    scripts:
+      - name: Show toolchain versions
+        script: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Run HarmonyCore tests
+        script: |
+          swift test --package-path Core
+      - name: Check Swift formatting
+        script: |
+          swift format lint --strict --recursive Harmony Core/Sources Core/Tests Scripts Package.swift Core/Package.swift
+      - name: Set the build number above TestFlight's latest
+        script: |
+          # Never go below the number committed in Info.plist; TestFlight rejects repeated build numbers.
+          CURRENT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Harmony/Info.plist)
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null | tail -n 1 || true)
+          [[ "$LATEST" =~ ^[0-9]+$ ]] || LATEST=0
+          if (( LATEST >= CURRENT )); then NEXT=$((LATEST + 1)); else NEXT=$CURRENT; fi
+          echo "Info.plist build $CURRENT, TestFlight latest $LATEST, uploading build $NEXT"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEXT" Harmony/Info.plist
+      - name: Generate the Xcode project
+        script: |
+          swift Scripts/GenerateXcodeProject.swift
+      - name: Apply the App Store provisioning profile
+        script: |
+          xcode-project use-profiles
+      - name: Build the signed IPA
+        script: |
+          xcode-project build-ipa --project Harmony.xcodeproj --scheme Harmony
+      - name: Check the signed IPA
+        script: |
+          IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
+          unzip -p "$IPA" 'Payload/*.app/Info.plist' > /tmp/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' /tmp/Info.plist)" = "$BUNDLE_ID"
+          echo "Built $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /tmp/Info.plist) ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' /tmp/Info.plist))"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        # Internal testers receive processed builds without Apple's beta review.
+        submit_to_testflight: false

@@ -1,5 +1,5 @@
 version: 1
-bundleID: app.harmony
+bundleID: app.harmony.music
 infoPath: Harmony/Info.plist
 iconPath: AppIcon.png
 resources:

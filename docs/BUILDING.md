@@ -16,7 +16,7 @@ On Linux, use xtool with a compatible iOS 27 SDK:
 xtool dev build -c release --triple arm64-apple-ios27.0 --ipa
 ```
 
-This writes `xtool/Harmony.ipa`. Linux uses `AppIcon.png`; Xcode uses the `HarmonyIcon.icon` source. The bundle identifier is `app.harmony`, separate from Gevun.
+This writes `xtool/Harmony.ipa`. Linux uses `AppIcon.png`; Xcode uses the `HarmonyIcon.icon` source. The bundle identifier is `app.harmony.music`, separate from Gevun.
 
 Run core tests and format checks:
 
@@ -57,3 +57,7 @@ python3 Scripts/RenderIcon.py
 This requires FFmpeg built with its librsvg decoder. The renderer reads geometry and colors from the Icon Composer source so the native and flattened artwork stay consistent. On a Mac, `bash Scripts/RenderIconPreviews.sh` checks the actual native default, dark, clear, and tinted renderings. Native appearance previews cannot be verified by the Linux build.
 
 Design references: [Apple’s app icon guidelines](https://developer.apple.com/design/human-interface-guidelines/app-icons/) and [Icon Composer](https://developer.apple.com/icon-composer/).
+
+## TestFlight
+
+The `harmony-testflight` workflow in `codemagic.yaml` signs with an App Store distribution profile and uploads to App Store Connect. It needs a Codemagic App Store Connect integration named `harmony-asc`, created from an App Store Connect API key with the App Manager role. Start it by hand in Codemagic. It raises the build number above TestFlight's latest, so the number in `Harmony/Info.plist` only needs changing when the version changes. Internal testers get processed builds without beta review.
