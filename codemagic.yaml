@@ -74,8 +74,22 @@ workflows:
           # Xcode creates and manages the distribution certificate and App Store profile
           # through the App Store Connect API key, so no signing files are stored here.
           KEY_FILE="$HOME/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8"
-          printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$KEY_FILE"
+          # Rebuild a clean PEM from the key however the environment variable delivered it.
+          RAW="$APP_STORE_CONNECT_PRIVATE_KEY"
+          case "$RAW" in
+            *BEGIN*) ;;
+            *) RAW=$(printf '%s' "$RAW" | base64 --decode 2>/dev/null || printf '%s' "$RAW") ;;
+          esac
+          BODY=$(printf '%s' "$RAW" | sed -e 's/\\n/ /g' | tr -d '\r' \
+            | sed -e 's/-----BEGIN PRIVATE KEY-----//' -e 's/-----END PRIVATE KEY-----//' | tr -d ' \n\t')
+          {
+            echo "-----BEGIN PRIVATE KEY-----"
+            printf '%s' "$BODY" | fold -w 64
+            echo
+            echo "-----END PRIVATE KEY-----"
+          } > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
+          openssl pkey -in "$KEY_FILE" -noout || { echo "The App Store Connect API key could not be read as a PEM private key." >&2; exit 1; }
           AUTH=(
             -allowProvisioningUpdates
             -authenticationKeyPath "$KEY_FILE"
