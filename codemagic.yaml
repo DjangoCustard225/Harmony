@@ -78,7 +78,11 @@ workflows:
           RAW="$APP_STORE_CONNECT_PRIVATE_KEY"
           case "$RAW" in
             *BEGIN*) ;;
-            *) RAW=$(printf '%s' "$RAW" | base64 --decode 2>/dev/null || printf '%s' "$RAW") ;;
+            *)
+              # A base64-wrapped PEM is unwrapped; a bare key body is kept as it is.
+              DECODED=$(printf '%s' "$RAW" | base64 --decode 2>/dev/null || true)
+              case "$DECODED" in *BEGIN*) RAW="$DECODED" ;; esac
+              ;;
           esac
           BODY=$(printf '%s' "$RAW" | sed -e 's/\\n/ /g' | tr -d '\r' \
             | sed -e 's/-----BEGIN PRIVATE KEY-----//' -e 's/-----END PRIVATE KEY-----//' | tr -d ' \n\t')
@@ -89,6 +93,9 @@ workflows:
             echo "-----END PRIVATE KEY-----"
           } > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
+          # Non-secret facts only. A P-256 .p8 body is 180-210 characters and begins "MIGHAgEAMBMG" or "MIGTAgEAMBMG".
+          case "$BODY" in MIG[HT]AgEAMBMGByqGSM49*) PREFIX=yes ;; *) PREFIX=no ;; esac
+          echo "API key: ${#BODY} body characters, begins like a P-256 key: $PREFIX, key id: $APP_STORE_CONNECT_KEY_IDENTIFIER"
           openssl pkey -in "$KEY_FILE" -noout || { echo "The App Store Connect API key could not be read as a PEM private key." >&2; exit 1; }
           AUTH=(
             -allowProvisioningUpdates
