@@ -37,12 +37,10 @@ workflows:
       app_store_connect: harmony-asc
     environment:
       xcode: "27.2"
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: app.harmony.music
       vars:
         BUNDLE_ID: app.harmony.music
         APP_STORE_APPLE_ID: 6833773273
+        TEAM_ID: V8A4AS5K3W
     cache:
       cache_paths:
         - $HOME/Library/Caches/org.swift.swiftpm
@@ -70,12 +68,38 @@ workflows:
       - name: Generate the Xcode project
         script: |
           swift Scripts/GenerateXcodeProject.swift
-      - name: Apply the App Store provisioning profile
+      - name: Build and sign the IPA with Xcode automatic signing
         script: |
-          xcode-project use-profiles
-      - name: Build the signed IPA
-        script: |
-          xcode-project build-ipa --project Harmony.xcodeproj --scheme Harmony
+          set -euo pipefail
+          # Xcode creates and manages the distribution certificate and App Store profile
+          # through the App Store Connect API key, so no signing files are stored here.
+          KEY_FILE="$HOME/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8"
+          printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          AUTH=(
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$KEY_FILE"
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_IDENTIFIER"
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+          )
+          mkdir -p build/ios/ipa
+          cat > build/ios/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store-connect</string>
+          <key>teamID</key><string>$TEAM_ID</string>
+          <key>signingStyle</key><string>automatic</string>
+          <key>destination</key><string>export</string>
+          <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild archive -project Harmony.xcodeproj -scheme Harmony -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/ios/Harmony.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" "${AUTH[@]}"
+          xcodebuild -exportArchive -archivePath build/ios/Harmony.xcarchive \
+            -exportPath build/ios/ipa -exportOptionsPlist build/ios/ExportOptions.plist "${AUTH[@]}"
+          rm -f "$KEY_FILE"
       - name: Check the signed IPA
         script: |
           IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
