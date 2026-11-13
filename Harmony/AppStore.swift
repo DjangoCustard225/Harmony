@@ -122,6 +122,7 @@ final class AppStore {
     }
     func refreshLibraryFromDisk() async {
         guard !libraryBusy, let library else { return }
+        await library.openLinkedFolders()
         refreshingLibrary = true
         defer { refreshingLibrary = false; importProgress = ""; Task { await processImports() } }
         var missing: [LocalTrack] = []
@@ -420,6 +421,7 @@ final class AppStore {
         await processImports()
     }
     func rescanFolder(_ id: String) async {
+        await library?.openLinkedFolders()
         pendingImports.append(.sync(id, quiet: false))
         await processImports()
     }
@@ -427,6 +429,7 @@ final class AppStore {
     /// `minimumInterval` are skipped, so returning to the app often stays cheap.
     func rescanLinkedFolders(minimumInterval: TimeInterval = 120) async {
         guard let library else { return }
+        await library.openLinkedFolders()
         let queued = pendingImports.contains {
             if case .sync = $0 { return true }
             return false

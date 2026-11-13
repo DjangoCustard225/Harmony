@@ -37,6 +37,7 @@ struct RootView: View {
         appContent
             .musicImporter()
             .task {
+                await store.library?.openLinkedFolders()
                 await store.refreshImportedMetadata()
                 await store.rescanLinkedFolders()
             }

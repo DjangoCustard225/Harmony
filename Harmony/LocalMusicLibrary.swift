@@ -50,7 +50,6 @@ final class LocalMusicLibrary {
         if FileManager.default.fileExists(atPath: manifest.path) {
             index = try JSONDecoder().decode(LocalLibraryIndex.self, from: Data(contentsOf: manifest))
         }
-        openLinkedFolders()
     }
     private func save(_ value: LocalLibraryIndex) throws {
         try JSONEncoder().encode(value).write(to: root.appendingPathComponent("Library.json"), options: .atomic)
@@ -59,7 +58,8 @@ final class LocalMusicLibrary {
 
     // MARK: Linked folders
 
-    func isAvailable(_ folderID: String) -> Bool { folderURLs[folderID] != nil }
+    /// True until the bookmarks have been resolved, so folders don't flash as unavailable at launch.
+    func isAvailable(_ folderID: String) -> Bool { !foldersOpened || folderURLs[folderID] != nil }
 
     /// Where a song's file lives, or nil when its linked folder can't be opened.
     func url(for track: LocalTrack) -> URL? {
@@ -73,9 +73,42 @@ final class LocalMusicLibrary {
         return "\(index.folder(folderID)?.name ?? "Linked folder")/\(track.filename)"
     }
 
-    private func openLinkedFolders() {
-        var updated = index
-        for folder in index.folders {
+    private var foldersOpened = false
+    private var opening: Task<Void, Never>?
+
+    /// Reopens linked folders from their bookmarks. Resolving a bookmark asks the Files provider, which
+    /// can block for seconds (iCloud Drive), so it never runs on the main thread or during launch.
+    func openLinkedFolders() async {
+        if foldersOpened { return }
+        if let opening {
+            await opening.value
+            return
+        }
+        let folders = index.folders
+        let task = Task {
+            let results = await Task.detached(priority: .userInitiated) { Self.resolve(folders) }.value
+            var updated = index
+            for result in results {
+                folderURLs[result.folder.id] = result.url
+                if let renewed = result.renewed { updated.updateFolder(renewed) }
+            }
+            if updated.folders != index.folders { try? save(updated) }
+            foldersOpened = true
+        }
+        opening = task
+        await task.value
+        opening = nil
+    }
+
+    private struct ResolvedFolder: Sendable {
+        let folder: LinkedFolder
+        let url: URL
+        let renewed: LinkedFolder?
+    }
+
+    private nonisolated static func resolve(_ folders: [LinkedFolder]) -> [ResolvedFolder] {
+        var results: [ResolvedFolder] = []
+        for folder in folders {
             var stale = false
             guard
                 let url = try? URL(
@@ -83,16 +116,17 @@ final class LocalMusicLibrary {
             else { continue }
             let access = url.startAccessingSecurityScopedResource()
             guard access || FileManager.default.isReadableFile(atPath: url.path) else { continue }
-            folderURLs[folder.id] = url
+            var renewed: LinkedFolder?
             // A renamed or moved folder still resolves; refresh its bookmark and name.
             if stale || folder.name != url.lastPathComponent, let bookmark = try? url.bookmarkData() {
-                var renewed = folder
-                renewed.bookmark = bookmark
-                renewed.name = url.lastPathComponent
-                updated.updateFolder(renewed)
+                var value = folder
+                value.bookmark = bookmark
+                value.name = url.lastPathComponent
+                renewed = value
             }
+            results.append(ResolvedFolder(folder: folder, url: url, renewed: renewed))
         }
-        if updated.folders != index.folders { try? save(updated) }
+        return results
     }
 
     /// Links a folder the user picked. Picking an already linked folder, or reconnecting one with
