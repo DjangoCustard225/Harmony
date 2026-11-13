@@ -11,3 +11,5 @@ dist/
 *.dSYM/
 .env
 .env.*
+screenshots/
+CLAUDE_HANDOFF.md
