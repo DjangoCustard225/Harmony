@@ -39,7 +39,7 @@ struct ArtistDetailView: View {
                             Text(
                                 enabled
                                     ? "No biography found for this artist."
-                                    : "Enable artist photos and biographies in Settings to see artist details."
+                                    : "Turn on Fetch artist info in Settings to see artist details."
                             )
                             .font(.callout).foregroundStyle(theme.secondary)
                         }

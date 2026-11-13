@@ -13,8 +13,9 @@ struct PlayerQueueSheet: View {
                 }
                 .scrollEdgeEffectStyle(.soft, for: .vertical)
                 .navigationTitle("Queue").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(role: .close) { dismiss() } } }
         }
+        .newPlaylistPrompt()
     }
 }
 
@@ -40,7 +41,7 @@ private struct PlayerQueueView: View {
                             Text(song.artistName).font(.caption).foregroundStyle(theme.secondary).lineLimit(1)
                         }
                         Spacer()
-                        Image(systemName: "waveform").foregroundStyle(theme.accent)
+                        PlayingIndicator()
                     }.padding(.vertical, 4)
                     Divider().overlay(theme.border).padding(.vertical, 8)
                 }

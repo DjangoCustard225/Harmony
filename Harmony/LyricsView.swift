@@ -6,8 +6,8 @@ struct LyricsView: View {
     @Environment(\.appTheme) private var theme
     @Environment(AppStore.self) private var store
     @EnvironmentObject private var interface: PlaybackInterfaceState
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
     @State private var versions: [StructuredLyrics] = []
     @State private var selection = 0
     @State private var loading = true
@@ -134,7 +134,11 @@ struct LyricsView: View {
                 }
             }
         }
-        ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+        // Swiping down also closes the sheet; the system draws this as a Liquid Glass ✕ for
+        // VoiceOver, Switch Control and anyone who doesn't know to swipe.
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(role: .close) { dismiss() }
+        }
     }
 
     private func updateActiveLine(at seconds: Double) {

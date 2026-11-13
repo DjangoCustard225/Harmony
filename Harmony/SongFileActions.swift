@@ -10,9 +10,6 @@ struct SongFileActions: View {
         } label: {
             Label("Track info", systemImage: "info.circle")
         }
-        if let url = try? store.library?.fileURL(song.id) {
-            ShareLink(item: url) { Label("Share audio file", systemImage: "square.and.arrow.up") }
-        }
         Button("Remove from Harmony", systemImage: "trash", role: .destructive) { store.removeSong(song) }
     }
 }

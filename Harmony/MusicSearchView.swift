@@ -43,7 +43,8 @@ struct MusicSearchView: View {
             }
         }
         .navigationTitle("Search").pageBackground()
-        .task(id: term) {
+        // Searching again after a library change drops removed songs from the results.
+        .task(id: "\(store.sessionID):\(term)") {
             results = SearchResults()
             loading = !term.isEmpty
             guard !term.isEmpty else { return }

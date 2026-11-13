@@ -60,10 +60,12 @@ struct ArtworkView: View {
     var cornerRadius: CGFloat = Theme.artworkCornerRadius
     @State private var image: UIImage?
     var body: some View {
+        // A cached cover shows in the row's first frame, so scrolling back doesn't flash the placeholder.
+        let shown = id.flatMap { store.artwork.cachedImage(id: $0, size: size) } ?? image
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                if let image { Image(uiImage: image).resizable().scaledToFill() } else { ArtworkPlaceholder() }
+                if let shown { Image(uiImage: shown).resizable().scaledToFill() } else { ArtworkPlaceholder() }
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
@@ -85,20 +87,30 @@ struct ArtworkView: View {
     }
 }
 
+/// Drawn in one pass (no view tree per cover), since many show at once while covers load.
 private struct ArtworkPlaceholder: View {
     @Environment(\.appTheme) private var theme
     var body: some View {
-        GeometryReader { proxy in
-            let side = proxy.size.width
-            ZStack {
-                LinearGradient(
-                    colors: [theme.elevated, theme.surface], startPoint: .topLeading, endPoint: .bottomTrailing)
-                Circle().stroke(Color.white.opacity(0.06), lineWidth: side * 0.10).frame(width: side * 0.72)
-                Circle().stroke(Color.white.opacity(0.10), lineWidth: 1).frame(width: side * 0.54)
-                Circle().fill(Color.black.opacity(0.35)).frame(width: side * 0.30)
-                Image(systemName: "music.note").font(.system(size: side * 0.14, weight: .medium)).foregroundStyle(
-                    .white.opacity(0.65))
-            }.frame(width: proxy.size.width, height: proxy.size.height)
+        Canvas { context, size in
+            let side = min(size.width, size.height)
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            func circle(_ diameter: CGFloat) -> Path {
+                Path(
+                    ellipseIn: CGRect(
+                        x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter))
+            }
+            context.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .linearGradient(
+                    Gradient(colors: [theme.elevated, theme.surface]), startPoint: .zero,
+                    endPoint: CGPoint(x: size.width, y: size.height)))
+            context.stroke(circle(side * 0.72), with: .color(.white.opacity(0.06)), lineWidth: side * 0.10)
+            context.stroke(circle(side * 0.54), with: .color(.white.opacity(0.10)), lineWidth: 1)
+            context.fill(circle(side * 0.30), with: .color(.black.opacity(0.35)))
+            let note = context.resolve(
+                Text(Image(systemName: "music.note")).font(.system(size: max(1, side * 0.14), weight: .medium))
+                    .foregroundStyle(.white.opacity(0.65)))
+            context.draw(note, at: center, anchor: .center)
         }
     }
 }
@@ -149,6 +161,22 @@ struct AlbumActions: View {
     }
 }
 
+/// Marks the song that's playing. The bars animate while audio plays and rest while paused.
+struct PlayingIndicator: View {
+    @Environment(\.appTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var interface: PlaybackInterfaceState
+    var body: some View {
+        Image(systemName: "waveform")
+            .symbolEffect(
+                .variableColor.iterative.dimInactiveLayers.nonReversing,
+                isActive: interface.isPlaying && !reduceMotion
+            )
+            .foregroundStyle(theme.accent)
+            .accessibilityLabel(interface.isPlaying ? "Now playing" : "Paused")
+    }
+}
+
 struct SongRow: View {
     @Environment(\.appTheme) private var theme
     @Environment(AppStore.self) private var store
@@ -167,6 +195,10 @@ struct SongRow: View {
                         ).lineLimit(2)
                         Text(song.artistName).font(.caption).foregroundStyle(theme.secondary).lineLimit(1)
                     }.frame(maxWidth: .infinity, alignment: .leading)
+                    if interface.current?.id == song.id {
+                        // The accent is white like every title, so mark the playing song with a symbol.
+                        PlayingIndicator().font(.caption)
+                    }
                     Text(TimeLabel.clock(Double(song.duration ?? 0))).font(.caption).monospacedDigit().foregroundStyle(
                         theme.secondary)
                 }.frame(minHeight: 44).contentShape(Rectangle()).padding(.vertical, 4)
@@ -176,12 +208,36 @@ struct SongRow: View {
                     player.add(song, next: true)
                 }
                 Button("Add to queue", systemImage: "text.badge.plus") { player.add(song, next: false) }
+                AddToPlaylistMenu(songs: [song])
                 SongFileActions(song: song)
             } label: {
                 Image(systemName: "ellipsis").font(.body).foregroundStyle(theme.secondary).frame(width: 36, height: 44)
                     .contentShape(Rectangle())
             }.accessibilityLabel("Actions for \(song.title)")
         }
+    }
+}
+
+/// "Add to Playlist" submenu: existing playlists, newest first, plus a new one.
+struct AddToPlaylistMenu: View {
+    @Environment(AppStore.self) private var store
+    let songs: [Song]
+    var body: some View {
+        Menu {
+            Button("New Playlist…", systemImage: "plus") { store.newPlaylistRequest = songs }
+            if !store.playlists.isEmpty {
+                Section {
+                    ForEach(store.playlists.reversed()) { playlist in
+                        Button(playlist.name, systemImage: "music.note.list") {
+                            store.addToPlaylist(songs, playlist)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label("Add to Playlist", systemImage: "music.note.list")
+        }
+        .disabled(songs.isEmpty)
     }
 }
 
@@ -241,7 +297,7 @@ struct ErrorCard: View {
     let retry: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Couldn't load your music", systemImage: "wifi.exclamationmark").font(.headline)
+            Label("Couldn't load your music", systemImage: "exclamationmark.triangle").font(.headline)
             Text(message).font(.subheadline).foregroundStyle(theme.secondary)
             Button("Try again", systemImage: "arrow.clockwise", action: retry).buttonStyle(.bordered)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()

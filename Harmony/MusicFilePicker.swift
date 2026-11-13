@@ -3,7 +3,8 @@ import UniformTypeIdentifiers
 import UIKit
 
 enum MusicImportMode: String, Identifiable {
-    case files, folder
+    /// `link` opens a folder in place, so its songs play from where they are.
+    case files, folder, link
     var id: Self { self }
 }
 
@@ -24,6 +25,9 @@ struct MusicFilePicker: UIViewControllerRepresentable {
             // Copy the selected folder into the app's temporary area so providers that
             // cannot grant recursive open-in-place access can still be imported.
             picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: true)
+        case .link:
+            // Opened in place (not as a copy) for lasting, recursive access to the folder.
+            picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
         case .files:
             // Some providers expose audio (especially FLAC) as generic data. Let users select
             // those files and validate the actual audio with AVFoundation during import.

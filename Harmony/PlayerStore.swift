@@ -386,6 +386,9 @@ final class PlayerStore: ObservableObject {
             if let id = song.coverArt {
                 loadArtwork(id: id, library: library, playbackID: playbackID)
             }
+        } catch let error as LocalLibraryError {
+            // Linked-folder problems say what to do (reconnect the folder, or wait for iCloud).
+            fail(error.localizedDescription)
         } catch { fail("Playback could not start. Check that the imported file is still available.") }
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import HarmonyCore
 
 @main
 struct HarmonyApp: App {
@@ -15,31 +16,34 @@ struct HarmonyApp: App {
     }
 }
 
-private enum AppTab: Hashable { case albums, artists, songs, search, settings }
+private enum AppTab: Hashable {
+    case library(LibraryTab)
+    case settings, search
+}
 
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @EnvironmentObject private var interface: PlaybackInterfaceState
     @EnvironmentObject private var appearance: ArtworkAppearance
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selection = AppTab.albums
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(TabLayout.storageKey) private var tabStorage = TabLayout.standard.storage
+    @State private var selection = AppTab.library(.albums)
     @State private var searchQuery = ""
     @State private var searchPresented = false
 
     var body: some View {
         @Bindable var store = store
         appContent
-            .sheet(item: $store.importMode) { mode in
-                MusicFilePicker(mode: mode) { urls in
-                    store.importMode = nil
-                    Task {
-                        await store.importFiles(urls)
-                    }
-                } onCancel: {
-                    store.importMode = nil
-                }
+            .musicImporter()
+            .task {
+                await store.refreshImportedMetadata()
+                await store.rescanLinkedFolders()
             }
-            .task { await store.refreshImportedMetadata() }
+            // Pick up files added to linked folders (for example in iCloud Drive) while away.
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await store.rescanLinkedFolders() } }
+            }
             .onOpenURL { url in Task { await store.importFiles([url]) } }
             .overlay(alignment: .top) {
                 if store.importing {
@@ -62,10 +66,13 @@ struct RootView: View {
             } message: {
                 Text(store.notice ?? "")
             }
+            // Song menus inside the player's queue sheet present their own prompt.
+            .newPlaylistPrompt(isActive: !interface.expanded)
             .environment(\.appTheme, appearance.theme.oled)
             .tint(appearance.theme.accent)
-            .onChange(of: store.sessionID) { _, _ in
-                searchPresented = false; searchQuery = ""; selection = .albums
+            .onChange(of: tabStorage, initial: true) { _, _ in
+                // Leave a tab the user just hid.
+                if case .library(let tab) = selection, !layout.isVisible(tab) { selection = firstTab }
             }
             .task(id: "\(interface.expanded):\(store.sessionID):\(interface.current?.coverArt ?? "")") {
                 guard !interface.expanded else { return }
@@ -75,16 +82,22 @@ struct RootView: View {
             }
     }
 
+    private var layout: TabLayout { TabLayout(storage: tabStorage) }
+    private var firstTab: AppTab { .library(layout.visibleTabs[0]) }
+
+    @ViewBuilder private func tabContent(_ tab: LibraryTab) -> some View {
+        switch tab {
+        case .albums: NavigationStack { LibraryView(category: .albums) }
+        case .artists: NavigationStack { LibraryView(category: .artists) }
+        case .songs: NavigationStack { LibraryView(category: .songs) }
+        case .playlists: NavigationStack { PlaylistsView() }
+        }
+    }
+
     private var appContent: some View {
         TabView(selection: $selection) {
-            Tab("Albums", systemImage: "square.stack", value: .albums) {
-                NavigationStack { LibraryView(category: .albums) }.id(store.sessionID)
-            }
-            Tab("Artists", systemImage: "person.2", value: .artists) {
-                NavigationStack { LibraryView(category: .artists) }.id(store.sessionID)
-            }
-            Tab("Songs", systemImage: "music.note", value: .songs) {
-                NavigationStack { LibraryView(category: .songs) }.id(store.sessionID)
+            ForEach(layout.visibleTabs, id: \.self) { tab in
+                Tab(tab.title, systemImage: tab.symbol, value: AppTab.library(tab)) { tabContent(tab) }
             }
             Tab("Settings", systemImage: "gearshape", value: .settings) {
                 NavigationStack { SettingsView() }
@@ -94,7 +107,6 @@ struct RootView: View {
                     .searchable(
                         text: $searchQuery, isPresented: $searchPresented, prompt: "Albums, artists, tracks"
                     )
-                    .id(store.sessionID)
             }
         }
         .tabViewSearchActivation(.searchTabSelection)

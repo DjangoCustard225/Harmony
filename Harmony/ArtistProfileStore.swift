@@ -89,16 +89,31 @@ final class ArtistProfileStore {
         return result
     }
 
-    func photo(_ profile: ArtistProfile) async -> UIImage? {
+    private func photoKey(_ url: URL) -> String {
+        SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    /// A photo already in memory at `size`, for showing in a row's first frame.
+    func cachedPhoto(_ profile: ArtistProfile, size: Int) -> UIImage? {
         guard let url = profile.photoURL else { return nil }
-        let key = SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
-        if let image = images.object(forKey: key as NSString) { return image }
-        if let task = photoTasks[key] { return await task.value }
+        return images.object(forKey: "\(photoKey(url)):\(size)" as NSString)
+    }
+
+    /// The artist's photo scaled to `size` pixels, so list rows don't decode full-size portraits.
+    func photo(_ profile: ArtistProfile, size: Int = 1200) async -> UIImage? {
+        guard let url = profile.photoURL else { return nil }
+        let key = photoKey(url)
+        let sizedKey = "\(key):\(size)"
+        if let image = images.object(forKey: sizedKey as NSString) { return image }
+        if let task = photoTasks[sizedKey] { return await task.value }
         let task = Task<UIImage?, Never> { [weak self] in
             guard let self else { return nil }
             let file = directory?.appendingPathComponent(key + ".image")
             let data: Data
-            if let file, let saved = try? Data(contentsOf: file) {
+            let saved: Data? =
+                if let file {
+                    await Task.detached(priority: .userInitiated) { try? Data(contentsOf: file) }.value
+                } else { nil }
+            if let saved {
                 data = saved
             } else {
                 guard UserDefaults.standard.object(forKey: "artistDetailsEnabled") as? Bool != false else { return nil }
@@ -113,14 +128,14 @@ final class ArtistProfileStore {
                 if let file { try? data.write(to: file, options: .atomic) }
             }
             guard let source = UIImage(data: data) else { return nil }
-            let image = await source.byPreparingThumbnail(ofSize: CGSize(width: 1200, height: 1200)) ?? source
+            let image = await source.byPreparingThumbnail(ofSize: CGSize(width: size, height: size)) ?? source
             images.setObject(
-                image, forKey: key as NSString, cost: image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0)
+                image, forKey: sizedKey as NSString, cost: image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0)
             return image
         }
-        photoTasks[key] = task
+        photoTasks[sizedKey] = task
         let result = await task.value
-        photoTasks[key] = nil
+        photoTasks[sizedKey] = nil
         return result
     }
 }

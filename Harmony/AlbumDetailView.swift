@@ -10,6 +10,7 @@ struct AlbumDetailView: View {
     @State private var songs: [Song] = []
     @State private var loading = true
     @State private var message: String?
+    @State private var removed = false
     @State private var revision = UUID()
 
     private var displayedAlbum: Album { detail ?? album }
@@ -39,7 +40,13 @@ struct AlbumDetailView: View {
                 VStack(spacing: 24) {
                     albumHeading
                     playButton
-                    if let message { ErrorCard(message: message) { Task { await load() } } }
+                    if removed {
+                        ContentUnavailableView(
+                            "Album removed", systemImage: "square.stack",
+                            description: Text("This album is no longer in your library."))
+                    } else if let message {
+                        ErrorCard(message: message) { Task { await load() } }
+                    }
                     if loading {
                         ProgressView().accessibilityLabel("Loading album")
                             .frame(maxWidth: .infinity).padding(.vertical, 24)
@@ -59,9 +66,6 @@ struct AlbumDetailView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                ShareLink(item: "\(displayedAlbum.name) — \(displayedAlbum.artistName)") {
-                    Image(systemName: "square.and.arrow.up").foregroundStyle(.white)
-                }.accessibilityLabel("Share album")
                 Menu {
                     Button("Play album", systemImage: "play.fill") { player.play(songs) }
                     Button("Play next", systemImage: "text.line.first.and.arrowtriangle.forward") {
@@ -74,6 +78,7 @@ struct AlbumDetailView: View {
                     Button("Add to queue", systemImage: "text.badge.plus") {
                         songs.forEach { player.add($0, next: false) }
                     }
+                    AddToPlaylistMenu(songs: songs)
                 } label: {
                     Image(systemName: "ellipsis").foregroundStyle(.white)
                 }
@@ -151,17 +156,25 @@ struct AlbumDetailView: View {
         revision = token
         loading = true
         message = nil
+        removed = false
         defer { if revision == token { loading = false } }
         do {
             let value = try await library.album(album.id)
             guard !Task.isCancelled, revision == token else { return }
             detail = value
             songs = value.songs
+        } catch LocalLibraryError.missing {
+            // Every song in the album was removed while the page was open.
+            guard revision == token else { return }
+            detail = nil
+            songs = []
+            removed = true
         } catch { if revision == token { message = error.localizedDescription } }
     }
 }
 
-private struct AlbumTrackRow: View {
+/// A numbered track row, shared by album and playlist pages.
+struct AlbumTrackRow: View {
     @Environment(\.appTheme) private var theme
     @Environment(AppStore.self) private var store
     @EnvironmentObject private var interface: PlaybackInterfaceState
@@ -169,6 +182,8 @@ private struct AlbumTrackRow: View {
     let song: Song
     let number: Int
     let showArtist: Bool
+    /// Adds "Remove from Playlist" to the row's menu.
+    var remove: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
@@ -177,7 +192,7 @@ private struct AlbumTrackRow: View {
                 HStack(spacing: 10) {
                     Group {
                         if interface.current?.id == song.id {
-                            Image(systemName: "waveform").foregroundStyle(theme.accent)
+                            PlayingIndicator()
                         } else {
                             Text(String(number)).foregroundStyle(theme.secondary).monospacedDigit()
                         }
@@ -198,6 +213,10 @@ private struct AlbumTrackRow: View {
                     player.add(song, next: true)
                 }
                 Button("Add to queue", systemImage: "text.badge.plus") { player.add(song, next: false) }
+                AddToPlaylistMenu(songs: [song])
+                if let remove {
+                    Button("Remove from Playlist", systemImage: "minus.circle", role: .destructive, action: remove)
+                }
                 SongFileActions(song: song)
             } label: {
                 Image(systemName: "ellipsis").font(.body).foregroundStyle(theme.secondary)

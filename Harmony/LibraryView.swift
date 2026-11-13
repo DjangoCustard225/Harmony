@@ -123,7 +123,7 @@ struct ArtistRow: View {
     let artist: Artist
     var body: some View {
         HStack(spacing: 10) {
-            ArtistPortraitView(artist: artist, cornerRadius: 32)
+            ArtistPortraitView(artist: artist, cornerRadius: 32, size: 192)
                 .frame(width: 64, height: 64).clipShape(Circle())
             VStack(alignment: .leading, spacing: 3) {
                 Text(artist.name).font(.headline).foregroundStyle(.white)

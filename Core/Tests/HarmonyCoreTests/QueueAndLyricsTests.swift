@@ -78,6 +78,46 @@ final class QueueAndLyricsTests: XCTestCase {
         XCTAssertEqual(queue.songs.map(\.id), ["1", "2", "4", "3", "4"])
     }
 
+    func testRemovingSongsKeepsPlaybackPosition() throws {
+        let songs = try decodeSongs()
+        var queue = PlaybackQueue()
+        queue.replace(songs, startingAt: 1)
+        XCTAssertEqual(queue.remove(["1"]), .unchanged)
+        XCTAssertEqual(queue.songs.map(\.id), ["2", "3"])
+        XCTAssertEqual(queue.current?.id, "2")
+        XCTAssertEqual(queue.remove(["2"]), .advanced)
+        XCTAssertEqual(queue.current?.id, "3")
+        XCTAssertEqual(queue.remove(["3"]), .ended)
+        XCTAssertNil(queue.current)
+        XCTAssertEqual(queue.remove(["3"]), .unchanged)
+
+        queue.replace(songs, startingAt: 2)
+        queue.repeatMode = .all
+        XCTAssertEqual(queue.remove(["3"]), .advanced)
+        XCTAssertEqual(queue.current?.id, "1")
+
+        queue.replace(songs, startingAt: 2)
+        queue.repeatMode = .off
+        XCTAssertEqual(queue.remove(["3"]), .ended)
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "2"])
+    }
+
+    func testRemovalReplacesCopiesInPlace() throws {
+        let songs = try decodeSongs()
+        let kept = try JSONDecoder().decode(Song.self, from: Data(#"{"id":"k","title":"Kept"}"#.utf8))
+        var queue = PlaybackQueue()
+        queue.replace(songs, startingAt: 1)
+        XCTAssertEqual(queue.remove([], replacements: ["2": kept]), .replaced)
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "k", "3"])
+        XCTAssertEqual(queue.current?.id, "k")
+        XCTAssertEqual(queue.remove([], replacements: ["3": kept]), .unchanged)
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "k", "k"])
+        // The unshuffled order follows the same replacements.
+        queue.toggleShuffle()
+        queue.toggleShuffle()
+        XCTAssertEqual(queue.songs.map(\.id), ["1", "k", "k"])
+    }
+
     private func decodeSongs() throws -> [Song] {
         try JSONDecoder().decode(
             [Song].self,

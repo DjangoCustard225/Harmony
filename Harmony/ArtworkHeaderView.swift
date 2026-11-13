@@ -6,6 +6,8 @@ struct ArtworkHeaderView: View {
     @Environment(\.displayScale) private var displayScale
     let id: String?
     var artist: Artist? = nil
+    /// Cover IDs for a split cover, used instead of `id` when there are at least two.
+    var mosaic: [String] = []
 
     var body: some View {
         GeometryReader { proxy in
@@ -66,7 +68,13 @@ struct ArtworkHeaderView: View {
     }
 
     @ViewBuilder private var artwork: some View {
-        if let artist { ArtistPortraitView(artist: artist) } else { ArtworkView(id: id, size: 1200, cornerRadius: 0) }
+        if let artist {
+            ArtistPortraitView(artist: artist)
+        } else if mosaic.count > 1 {
+            ArtworkMosaic(ids: mosaic)
+        } else {
+            ArtworkView(id: mosaic.first ?? id, size: 1200, cornerRadius: 0)
+        }
     }
 
 }
@@ -78,5 +86,52 @@ struct ArtworkScrollEdges: ViewModifier {
             // navigation controls minimize, and avoid switching a second edge backdrop.
             .toolbarMinimizationSafeAreaAdjustment(.disabled, for: .navigationBar)
             .scrollEdgeEffectHidden(true, for: .top)
+    }
+}
+
+/// Up to four covers split into one square: halves for two, a half and two quarters for three,
+/// and a 2×2 grid for four.
+struct ArtworkMosaic: View {
+    let ids: [String]
+    /// Pixel size requested for each quarter; a single cover asks for twice this.
+    var tileSize = 600
+
+    var body: some View {
+        let ids = Array(ids.prefix(4))
+        Color.clear.aspectRatio(1, contentMode: .fit).overlay {
+            switch ids.count {
+            case 0: ArtworkView(id: nil, cornerRadius: 0)
+            case 1: tile(ids[0], size: tileSize * 2)
+            case 2:
+                HStack(spacing: 0) {
+                    tile(ids[0]); tile(ids[1])
+                }
+            case 3:
+                HStack(spacing: 0) {
+                    tile(ids[0])
+                    VStack(spacing: 0) {
+                        tile(ids[1]); tile(ids[2])
+                    }
+                }
+            default:
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        tile(ids[0]); tile(ids[1])
+                    }
+                    HStack(spacing: 0) {
+                        tile(ids[2]); tile(ids[3])
+                    }
+                }
+            }
+        }
+        .clipped()
+    }
+
+    /// Fills its slot with the cover, cropping the overflow so halves stay edge to edge.
+    private func tile(_ id: String, size: Int? = nil) -> some View {
+        Color.clear.overlay {
+            ArtworkView(id: id, size: size ?? tileSize, cornerRadius: 0).aspectRatio(1, contentMode: .fill)
+        }
+        .clipped()
     }
 }

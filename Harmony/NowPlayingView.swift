@@ -99,8 +99,9 @@ struct NowPlayingView: View {
         }
         .onChange(of: interface.current?.id) { _, _ in artistTask?.cancel() }
         .onChange(of: store.sessionID) { _, _ in
+            // Open sheets stay up and refresh themselves (lyrics reload, album pages show removals);
+            // only an artist lookup started against the old library is dropped.
             artistTask?.cancel()
-            presentedSheet = nil
             artistError = nil
         }
         .onDisappear {

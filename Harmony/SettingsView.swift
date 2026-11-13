@@ -31,6 +31,11 @@ struct SettingsView: View {
                     }
                 }.disabled(store.libraryBusy)
                 NavigationLink {
+                    MusicFoldersView()
+                } label: {
+                    Label("Music folders", systemImage: "folder")
+                }
+                NavigationLink {
                     DuplicateReviewView()
                 } label: {
                     Label("Review duplicates", systemImage: "square.on.square")
@@ -43,8 +48,14 @@ struct SettingsView: View {
             }.listRowBackground(theme.surface)
 
             Section {
-                Toggle("Artist photos & biographies", isOn: $artistDetails).tint(theme.switchTint)
+                NavigationLink {
+                    TabSettingsView()
+                } label: {
+                    Label("Tabs", systemImage: "dock.rectangle")
+                }
+                Toggle("Fetch artist info", isOn: $artistDetails).tint(theme.switchTint)
             }.listRowBackground(theme.surface)
-        }.listSectionSpacing(.compact).navigationTitle("Settings").pageBackground()
+        }
+        .listSectionSpacing(.compact).navigationTitle("Settings").pageBackground()
     }
 }

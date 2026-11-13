@@ -6,13 +6,19 @@ struct ArtistPortraitView: View {
     @AppStorage("artistDetailsEnabled") private var enabled = true
     let artist: Artist
     var cornerRadius: CGFloat = 0
+    /// Pixel size to decode; list rows pass a small one.
+    var size = 1200
     @State private var image: UIImage?
 
     var body: some View {
+        let shown =
+            enabled
+            ? store.artistProfiles.cached(artist).flatMap { store.artistProfiles.cachedPhoto($0, size: size) } ?? image
+            : nil
         Color.clear.aspectRatio(1, contentMode: .fit)
             .overlay {
-                if enabled, let image {
-                    Image(uiImage: image).resizable().scaledToFill()
+                if let shown {
+                    Image(uiImage: shown).resizable().scaledToFill()
                 } else {
                     ZStack {
                         Color.white.opacity(0.06)
@@ -25,7 +31,7 @@ struct ArtistPortraitView: View {
                 guard enabled else { image = nil; return }
                 let profile = await store.artistProfiles.load(artist, musicBrainzID: store.musicBrainzID(for: artist))
                 guard !Task.isCancelled else { return }
-                if let profile { image = await store.artistProfiles.photo(profile) } else { image = nil }
+                if let profile { image = await store.artistProfiles.photo(profile, size: size) } else { image = nil }
             }.accessibilityHidden(true)
     }
 }
