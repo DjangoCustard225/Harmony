@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Puts raw iPhone screenshots in a device frame for App Store and social images.
 
-Usage: python3 Scripts/FrameScreenshots.py [raw_dir] [out_dir]
+Usage: python3 Scripts/FrameScreenshots.py [raw_dir] [out_dir] [--plain]
+
+--plain: flat near-black background, no caption, device centered.
 
 Reads every PNG in raw_dir (default screenshots/raw), draws a titanium iPhone frame with a
 Dynamic Island around it on a tinted background with a caption, and writes 1320x2868 PNGs
@@ -37,10 +39,10 @@ def sdf_alpha(half_w: float, half_h: float, radius: float) -> str:
     return f"(hypot(max({qx},0),max({qy},0))+min(max({qx},{qy}),0)-{radius})"
 
 
-def filter_graph(title: str, subtitle: str, top, glow) -> str:
+def filter_graph(title: str, subtitle: str, top, glow, plain: bool = False) -> str:
     screen_h = round(SCREEN_W * 2556 / 1179)
     dev_w, dev_h = SCREEN_W + 2 * BEZEL, screen_h + 2 * BEZEL
-    dev_x, dev_y = (CANVAS_W - dev_w) // 2, TOP_MARGIN
+    dev_x, dev_y = (CANVAS_W - dev_w) // 2, ((CANVAS_H - dev_h) // 2 if plain else TOP_MARGIN)
     outer = SCREEN_RADIUS + BEZEL
     island_w, island_h = 314, 92
     d_screen = sdf_alpha(SCREEN_W / 2, screen_h / 2, SCREEN_RADIUS)
@@ -53,6 +55,8 @@ def filter_graph(title: str, subtitle: str, top, glow) -> str:
     def channel(base_top: int, glow_c: int) -> str:
         fade = f"clip(1-hypot(X-{CANVAS_W / 2},Y-{TOP_MARGIN + screen_h * 0.45})/1500,0,1)"
         vertical = f"({base_top}*(1-Y/{CANVAS_H}*0.85))"
+        if plain:
+            return f"{base_top}"
         return f"{vertical}+({glow_c}*0.42*{fade}*{fade})"
 
     bg = (
@@ -95,14 +99,16 @@ def filter_graph(title: str, subtitle: str, top, glow) -> str:
         f"[c1][b2]overlay=x={dev_x}:y={dev_y}:format=auto[c2];"
         f"[c2][scr]overlay=x={dev_x + BEZEL}:y={dev_y + BEZEL}:format=auto[c3];"
         f"[c3][isl]overlay=x={dev_x + (dev_w - island_w) // 2}:y={dev_y + BEZEL + 28}:format=auto,"
-        f"{text},format=rgb24"
+        f"{'format=rgb24' if plain else text + ',format=rgb24'}"
     )
 
 
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parent.parent
-    raw = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else root / "screenshots/raw"
-    out = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else root / "screenshots/out"
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    raw = pathlib.Path(args[0]) if args else root / "screenshots/raw"
+    out = pathlib.Path(args[1]) if len(args) > 1 else root / "screenshots/out"
+    plain = "--plain" in sys.argv
     out.mkdir(parents=True, exist_ok=True)
     files = sorted(raw.glob("*.png"))
     if not files:
@@ -110,10 +116,12 @@ def main() -> int:
         return 1
     for file in files:
         title, subtitle, top, glow = CAPTIONS.get(file.stem, DEFAULT)
+        if plain:
+            top = (11, 11, 13)
         target = out / f"{file.stem}-framed.png"
         command = [
             "ffmpeg", "-y", "-loglevel", "error", "-i", str(file),
-            "-filter_complex", filter_graph(title, subtitle, top, glow),
+            "-filter_complex", filter_graph(title, subtitle, top, glow, plain),
             "-frames:v", "1", str(target),
         ]  # fmt: skip
         result = subprocess.run(command, capture_output=True, text=True)
