@@ -82,6 +82,9 @@ final class LinkedFolderTests: XCTestCase {
         }
         let scan = try MusicFolderScan.scan(root)
         XCTAssertEqual(scan.files.compactMap { MusicFolderScan.relativePath(of: $0, in: root) }, ["Album/a.flac"])
-        XCTAssertEqual(scan.placeholders.compactMap { MusicFolderScan.relativePath(of: $0, in: root) }, ["Album/b.mp3"])
+        // Placeholders stand for files that don't exist yet, so compare names rather than resolved paths.
+        XCTAssertEqual(
+            scan.placeholders.map { "\($0.deletingLastPathComponent().lastPathComponent)/\($0.lastPathComponent)" },
+            ["Album/b.mp3"])
     }
 }
