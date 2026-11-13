@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Harmony/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="112" alt="Harmony app icon">
+  <img src="docs/app-icon.png" width="112" alt="Harmony app icon">
 </p>
 
 <h1 align="center">Harmony</h1>
