@@ -4,8 +4,6 @@
 
 <h1 align="center">Harmony</h1>
 
-<p align="center">A local music player for iPhone and iPad</p>
-
 <p align="center">
   <img src="https://img.shields.io/badge/iOS-27%2B-007AFF?style=flat-square" alt="Requires iOS 27 or later">
 </p>
