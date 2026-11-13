@@ -14,15 +14,10 @@ Harmony keeps your music on your device. Import audio files, browse your library
 
 ## Screenshots
 
-<p align="center">
-  <img src="docs/screenshots/albums.png" width="118" alt="Albums">
-  <img src="docs/screenshots/songs.png" width="118" alt="Songs">
-  <img src="docs/screenshots/album.png" width="118" alt="Album">
-  <img src="docs/screenshots/now-playing.png" width="118" alt="Now playing">
-  <img src="docs/screenshots/lyrics.png" width="118" alt="Lyrics">
-  <img src="docs/screenshots/artists.png" width="118" alt="Artists">
-  <img src="docs/screenshots/artist.png" width="118" alt="Artist profile">
-</p>
+<picture>
+  <source media="(max-width: 600px)" srcset="docs/screenshots/readme-mobile.png">
+  <img src="docs/screenshots/readme-desktop.png" width="100%" alt="Harmony albums, songs, album, now playing, lyrics, artists and artist profile screens">
+</picture>
 
 ## What you can do
 
