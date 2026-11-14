@@ -386,6 +386,14 @@ final class PlayerStore: ObservableObject {
             if let id = song.coverArt {
                 loadArtwork(id: id, library: library, playbackID: playbackID)
             }
+        } catch LocalLibraryError.folderUnavailable where !library.foldersOpened {
+            // Linked folders open in the background at launch; try once more when they're ready.
+            // They're open by then, so a second failure reports normally instead of retrying.
+            Task {
+                await library.openLinkedFolders()
+                guard self.playbackID == playbackID else { return }
+                loadCurrent(autoplay: autoplay, at: start)
+            }
         } catch let error as LocalLibraryError {
             // Linked-folder problems say what to do (reconnect the folder, or wait for iCloud).
             fail(error.localizedDescription)

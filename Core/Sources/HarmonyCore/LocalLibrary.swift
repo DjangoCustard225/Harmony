@@ -193,6 +193,39 @@ public struct LocalLibraryIndex: Codable, Sendable {
             .map { $0.sorted { $0.added == $1.added ? $0.id < $1.id : $0.added < $1.added } }
             .sorted { $0[0].song.title.localizedStandardCompare($1[0].song.title) == .orderedAscending }
     }
+    /// Different files that are probably the same recording: same title and artist (ignoring case and
+    /// accents) and lengths within two seconds, like a retagged copy in a linked folder. Byte-identical
+    /// copies are left to `duplicateGroups`. Oldest first, like `duplicateGroups`.
+    public var similarGroups: [[LocalTrack]] {
+        func normalized(_ value: String) -> String {
+            value.folding(
+                options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")
+            )
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        }
+        let timed = tracks.filter { $0.song.duration != nil }
+        let byName = Dictionary(grouping: timed) {
+            "\(normalized($0.song.title))\u{0}\(normalized($0.song.artistName))"
+        }
+        var groups: [[LocalTrack]] = []
+        for candidates in byName.values where candidates.count > 1 {
+            var cluster: [LocalTrack] = []
+            for track in candidates.sorted(by: { $0.song.duration! < $1.song.duration! }) {
+                if let last = cluster.last, track.song.duration! - last.song.duration! > 2 {
+                    groups.append(cluster)
+                    cluster = []
+                }
+                cluster.append(track)
+            }
+            groups.append(cluster)
+        }
+        return groups.filter { group in
+            // Skip groups that are entirely one identical file.
+            group.count > 1 && Set(group.map { $0.fingerprint.map { "\($0.size):\($0.sha256)" } ?? $0.id }).count > 1
+        }
+        .map { $0.sorted { $0.added == $1.added ? $0.id < $1.id : $0.added < $1.added } }
+        .sorted { $0[0].song.title.localizedStandardCompare($1[0].song.title) == .orderedAscending }
+    }
     public var songs: [Song] {
         tracks.map(\.song).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }

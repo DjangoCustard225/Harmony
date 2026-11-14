@@ -46,16 +46,3 @@ subprocess.run([
 shutil.copyfile(root / "AppIcon.png", root / "Harmony/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
 print("Rendered opaque 1024 × 1024 Harmony icon from the native vector layers.")
 
-# Use the same silhouette for the small in-app brand mark.
-mark = root / "Harmony/Assets.xcassets/HarmonyMark.imageset"
-mark.mkdir(parents=True, exist_ok=True)
-(mark / "Contents.json").write_text(json.dumps({
-    "images": [{"filename": "HarmonyMark.png", "idiom": "universal"}],
-    "info": {"author": "xcode", "version": 1},
-    "properties": {"template-rendering-intent": "template"}
-}, indent=2) + "\n")
-subprocess.run([
-    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-    "-i", str(icon / "Assets/MusicNote.svg"), "-vf", "scale=256:256",
-    "-frames:v", "1", "-pix_fmt", "rgba", str(mark / "HarmonyMark.png")
-], check=True)

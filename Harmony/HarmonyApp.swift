@@ -17,8 +17,7 @@ struct HarmonyApp: App {
 }
 
 private enum AppTab: Hashable {
-    case library(LibraryTab)
-    case settings, search
+    case library, settings, search
 }
 
 struct RootView: View {
@@ -27,8 +26,7 @@ struct RootView: View {
     @EnvironmentObject private var appearance: ArtworkAppearance
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage(TabLayout.storageKey) private var tabStorage = TabLayout.standard.storage
-    @State private var selection = AppTab.library(.albums)
+    @State private var selection = AppTab.library
     @State private var searchQuery = ""
     @State private var searchPresented = false
 
@@ -71,10 +69,6 @@ struct RootView: View {
             .newPlaylistPrompt(isActive: !interface.expanded)
             .environment(\.appTheme, appearance.theme.oled)
             .tint(appearance.theme.accent)
-            .onChange(of: tabStorage, initial: true) { _, _ in
-                // Leave a tab the user just hid.
-                if case .library(let tab) = selection, !layout.isVisible(tab) { selection = firstTab }
-            }
             .task(id: "\(interface.expanded):\(store.sessionID):\(interface.current?.coverArt ?? "")") {
                 guard !interface.expanded else { return }
                 await appearance.update(
@@ -83,22 +77,10 @@ struct RootView: View {
             }
     }
 
-    private var layout: TabLayout { TabLayout(storage: tabStorage) }
-    private var firstTab: AppTab { .library(layout.visibleTabs[0]) }
-
-    @ViewBuilder private func tabContent(_ tab: LibraryTab) -> some View {
-        switch tab {
-        case .albums: NavigationStack { LibraryView(category: .albums) }
-        case .artists: NavigationStack { LibraryView(category: .artists) }
-        case .songs: NavigationStack { LibraryView(category: .songs) }
-        case .playlists: NavigationStack { PlaylistsView() }
-        }
-    }
-
     private var appContent: some View {
         TabView(selection: $selection) {
-            ForEach(layout.visibleTabs, id: \.self) { tab in
-                Tab(tab.title, systemImage: tab.symbol, value: AppTab.library(tab)) { tabContent(tab) }
+            Tab("Library", systemImage: "music.note.square.stack", value: AppTab.library) {
+                NavigationStack { LibraryHomeView() }
             }
             Tab("Settings", systemImage: "gearshape", value: .settings) {
                 NavigationStack { SettingsView() }

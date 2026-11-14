@@ -55,3 +55,33 @@ struct MusicFilePicker: UIViewControllerRepresentable {
         }
     }
 }
+
+extension View {
+    /// Presents the import picker for `AppStore.importMode`.
+    func musicImporter() -> some View {
+        modifier(MusicImporter())
+    }
+}
+
+private struct MusicImporter: ViewModifier {
+    @Environment(AppStore.self) private var store
+
+    func body(content: Content) -> some View {
+        @Bindable var store = store
+        content.sheet(item: $store.importMode) { mode in
+            MusicFilePicker(mode: mode) { urls in
+                store.importMode = nil
+                Task {
+                    switch mode {
+                    case .files: await store.importFiles(urls)
+                    case .folder: if let url = urls.first { await store.importFolder(url) }
+                    case .link: if let url = urls.first { await store.linkFolder(url) }
+                    }
+                }
+            } onCancel: {
+                store.importMode = nil
+                store.reconnectingFolderID = nil
+            }
+        }
+    }
+}

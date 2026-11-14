@@ -48,11 +48,6 @@ struct SettingsView: View {
             }.listRowBackground(theme.surface)
 
             Section {
-                NavigationLink {
-                    TabSettingsView()
-                } label: {
-                    Label("Tabs", systemImage: "dock.rectangle")
-                }
                 Toggle("Fetch artist info", isOn: $artistDetails).tint(theme.switchTint)
             }.listRowBackground(theme.surface)
         }

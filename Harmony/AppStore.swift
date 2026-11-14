@@ -8,6 +8,8 @@ final class AppStore {
     private(set) var library: LocalMusicLibrary?
     private(set) var sessionID = UUID()
     private(set) var albums: [Album] = []
+    /// The newest albums, for the Library tab.
+    private(set) var recentAlbums: [Album] = []
     private(set) var artists: [Artist] = []
     private(set) var songs: [Song] = []
     var albumOrder =
@@ -37,6 +39,8 @@ final class AppStore {
     private(set) var refreshingLibrary = false
     private(set) var reviewingDuplicates = false
     private(set) var duplicateGroups: [[LocalTrack]] = []
+    /// Same song in different files (e.g. retagged); only removed when the user picks copies.
+    private(set) var similarGroups: [[LocalTrack]] = []
     private(set) var duplicateWarnings: [String] = []
     private(set) var duplicateProgress = ""
     private(set) var duplicateResult: String?
@@ -154,13 +158,11 @@ final class AppStore {
         songsByID = Dictionary(index.tracks.map { ($0.id, $0.song) }, uniquingKeysWith: { first, _ in first })
         let values = library.albums
         artists = LocalLibraryIndex.artists(from: values)
-        if albumOrder == .newest {
-            let dates = Dictionary(grouping: index.tracks, by: { $0.song.albumId ?? "" })
-                .mapValues { $0.map(\.added).max() ?? .distantPast }
-            albums = values.sorted { (dates[$0.id] ?? .distantPast) > (dates[$1.id] ?? .distantPast) }
-        } else {
-            albums = values
-        }
+        let dates = Dictionary(grouping: index.tracks, by: { $0.song.albumId ?? "" })
+            .mapValues { $0.map(\.added).max() ?? .distantPast }
+        let newest = values.sorted { (dates[$0.id] ?? .distantPast) > (dates[$1.id] ?? .distantPast) }
+        recentAlbums = Array(newest.prefix(40))
+        albums = albumOrder == .newest ? newest : values
     }
     /// `refreshPlayerMetadata` is for tag rereads, which can also replace artwork; imports and
     /// removals only add or drop IDs, so cached artwork stays valid.
@@ -294,6 +296,8 @@ final class AppStore {
             case .files(let urls): summary.merge(await importBatch(urls, into: library))
             case .folder(let url): summary.merge(await importDirectory(url, into: library))
             case .link(let url, let replacing):
+                // An already linked folder is recognised by its open URL.
+                await library.openLinkedFolders()
                 do {
                     let folder = try library.link(url, replacing: replacing)
                     emptyMessage = "“\(folder.name)” is linked and up to date."
@@ -476,19 +480,24 @@ final class AppStore {
         return summary
     }
 
-    func scanDuplicates() async {
-        guard !libraryBusy, let library else { return }
+    /// Returns false when another library operation is running and the scan didn't start.
+    @discardableResult func scanDuplicates() async -> Bool {
+        guard !libraryBusy, let library else { return false }
         reviewingDuplicates = true
         duplicateResult = nil
         duplicateScanFailed = false
         duplicateWarnings = []
         defer { reviewingDuplicates = false; Task { await processImports() } }
+        // Linked songs can only be checked once their folders are open.
+        await library.openLinkedFolders()
         do {
             duplicateWarnings = try await library.refreshFingerprints { checked, total in
                 self.duplicateProgress = "Checked \(checked) of \(total) songs"
             }
             duplicateGroups = library.index.duplicateGroups
+            similarGroups = library.index.similarGroups
         } catch { duplicateWarnings = [error.localizedDescription]; duplicateScanFailed = true }
+        return true
     }
     /// A nil selection removes every duplicate after a fresh scan, keeping the oldest copy.
     func removeDuplicates(_ ids: Set<String>? = nil) async {
@@ -498,14 +507,18 @@ final class AppStore {
         duplicateResult = nil
         duplicateScanFailed = false
         defer { reviewingDuplicates = false; removingDuplicates = false; Task { await processImports() } }
+        await library.openLinkedFolders()
         do {
             duplicateWarnings = try await library.refreshFingerprints { checked, total in
                 self.duplicateProgress = "Rechecking \(checked) of \(total) songs"
             }
-            let currentGroups = library.index.duplicateGroups
+            // "Remove all" only touches identical files; similar ones need the user's choice.
+            let currentGroups = library.index.duplicateGroups + (ids == nil ? [] : library.index.similarGroups)
             var removed = 0
             var removedBytes: Int64 = 0
             for group in currentGroups {
+                // A copy can be in both kinds of group; skip any already removed.
+                let group = group.filter { library.track($0.id) != nil }
                 let chosen =
                     ids.map { selection in group.filter { selection.contains($0.id) } }
                     ?? Array(group.dropFirst())
@@ -527,6 +540,7 @@ final class AppStore {
                 }
             }
             duplicateGroups = library.index.duplicateGroups
+            similarGroups = library.index.similarGroups
             if removed > 0 { libraryDidChange() }
             duplicateResult =
                 removed == 0
@@ -537,7 +551,7 @@ final class AppStore {
     /// The indexed track for `id`. Reading it updates views when the library changes.
     func track(_ id: String) -> LocalTrack? {
         _ = libraryRevision
-        return library?.index.tracks.first { $0.id == id }
+        return library?.track(id)
     }
     /// Saves edited tags. Open pages stay put, so the session (and navigation) isn't reset.
     func editTrack(_ id: String, fields: TrackFields) -> Bool {

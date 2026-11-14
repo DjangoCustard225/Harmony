@@ -26,7 +26,6 @@ with zipfile.ZipFile(ipa) as archive:
     else:
         assert icon.get("CFBundleIconFiles") == ["AppIcon"], "Unexpected PNG icon selection"
         assert archive.read(app + "AppIcon.png") == Path("AppIcon.png").read_bytes(), "Unexpected PNG icon"
-        assert archive.read(app + "HarmonyMark.png") == Path("Harmony/Assets.xcassets/HarmonyMark.imageset/HarmonyMark.png").read_bytes(), "Unexpected in-app brand mark"
         icon_kind = "PNG icon"
     assert info["MinimumOSVersion"] == "27.0", "Unexpected minimum iOS version"
     assert info.get("UIBackgroundModes") == ["audio"], "Background playback missing"

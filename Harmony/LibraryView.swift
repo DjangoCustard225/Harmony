@@ -6,6 +6,57 @@ enum LibraryCategory: String {
     var title: String { rawValue.capitalized }
 }
 
+/// The Library tab: links into the library, then the newest albums.
+struct LibraryHomeView: View {
+    @Environment(\.appTheme) private var theme
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                link("Albums", symbol: "square.stack") { LibraryView(category: .albums) }
+                Divider().overlay(theme.border).padding(.leading, 48)
+                link("Artists", symbol: "person.2") { LibraryView(category: .artists) }
+                Divider().overlay(theme.border).padding(.leading, 48)
+                link("Songs", symbol: "music.note") { LibraryView(category: .songs) }
+                Divider().overlay(theme.border).padding(.leading, 48)
+                link("Playlists", symbol: "music.note.list") { PlaylistsView() }
+                Divider().overlay(theme.border)
+                if store.recentAlbums.isEmpty {
+                    LibraryEmptyState(
+                        title: "No music yet", symbol: "music.note",
+                        message: "Import songs from Files or link a music folder to start listening."
+                    ).padding(.top, 40)
+                } else {
+                    Text("Recently Added").font(.title2.weight(.bold)).foregroundStyle(.white)
+                        .accessibilityAddTraits(.isHeader)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 28).padding(.bottom, 14)
+                    AlbumGrid(albums: store.recentAlbums)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12).readingWidth()
+            .background { NativeScrollToTop().frame(width: 0, height: 0) }
+        }
+        .navigationTitle("Library")
+        .pageBackground()
+    }
+
+    private func link(_ title: String, symbol: String, @ViewBuilder destination: () -> some View) -> some View {
+        NavigationLink(destination: destination) {
+            HStack(spacing: 16) {
+                Image(systemName: symbol).font(.title3).foregroundStyle(theme.secondary).frame(width: 32)
+                Text(title).font(.title3).foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(theme.secondary)
+            }
+            .padding(.vertical, 14).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The full list of albums, artists or songs, opened from the Library tab.
 struct LibraryView: View {
     @Environment(\.appTheme) private var theme
     @Environment(AppStore.self) private var store
@@ -119,19 +170,13 @@ struct LibraryView: View {
 }
 
 struct ArtistRow: View {
-    @Environment(\.appTheme) private var theme
     let artist: Artist
     var body: some View {
         HStack(spacing: 10) {
             ArtistPortraitView(artist: artist, cornerRadius: 32, size: 192)
                 .frame(width: 64, height: 64).clipShape(Circle())
-            VStack(alignment: .leading, spacing: 3) {
-                Text(artist.name).font(.headline).foregroundStyle(.white)
-                if let count = artist.albumCount {
-                    Text("\(count) \(count == 1 ? "album" : "albums")").font(.caption).foregroundStyle(theme.secondary)
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: "chevron.right").font(.caption).foregroundStyle(theme.secondary)
+            Text(artist.name).font(.headline).foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.vertical, 4).contentShape(Rectangle())
     }
 }

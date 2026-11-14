@@ -48,7 +48,7 @@ Harmony’s icon uses a single white musical note on an indigo-to-violet gradien
 
 Keep appearance overrides inside `fill-specializations`, including the default gradient as the entry with no `appearance` key. A top-level `fill` next to `fill-specializations` takes precedence and silently disables the dark and tinted variants. Clear and tinted renderings are otherwise derived by the system; the note carries an explicit tinted fill so it stays legible.
 
-After editing the vector layers or background colors, regenerate the PNG fallback, matching asset-catalog image, and in-app brand mark:
+After editing the vector layers or background colors, regenerate the PNG fallback and matching asset-catalog image:
 
 ```sh
 python3 Scripts/RenderIcon.py

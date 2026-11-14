@@ -28,7 +28,18 @@ final class LocalMusicLibrary {
     /// Linked folders by ID, with security-scoped access held for as long as the app runs.
     private var folderURLs: [String: URL] = [:]
     private(set) var index = LocalLibraryIndex() {
-        didSet { albumCache = nil }
+        didSet {
+            albumCache = nil
+            trackCache = nil
+        }
+    }
+    private var trackCache: [String: LocalTrack]?
+    /// The track for `id`. Looked up per cover and per play, so it's indexed once per change.
+    func track(_ id: String) -> LocalTrack? {
+        if let trackCache { return trackCache[id] }
+        let value = Dictionary(index.tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        trackCache = value
+        return value[id]
     }
     private var albumCache: [Album]?
     /// Artwork content hashes by song ID, so identical covers saved per song compare equal.
@@ -73,7 +84,7 @@ final class LocalMusicLibrary {
         return "\(index.folder(folderID)?.name ?? "Linked folder")/\(track.filename)"
     }
 
-    private var foldersOpened = false
+    private(set) var foldersOpened = false
     private var opening: Task<Void, Never>?
 
     /// Reopens linked folders from their bookmarks. Resolving a bookmark asks the Files provider, which
@@ -88,7 +99,8 @@ final class LocalMusicLibrary {
         let task = Task {
             let results = await Task.detached(priority: .userInitiated) { Self.resolve(folders) }.value
             var updated = index
-            for result in results {
+            // A folder unlinked while its bookmark resolved stays closed.
+            for result in results where index.folder(result.folder.id) != nil {
                 folderURLs[result.folder.id] = result.url
                 if let renewed = result.renewed { updated.updateFolder(renewed) }
             }
@@ -525,7 +537,7 @@ final class LocalMusicLibrary {
 
     /// Saves edited tag values in the index; the audio file isn't changed.
     func edit(_ id: String, fields: TrackFields) throws {
-        guard let track = index.tracks.first(where: { $0.id == id }) else { throw LocalLibraryError.missing }
+        guard let track = track(id) else { throw LocalLibraryError.missing }
         var updated = index
         updated.replace(track.editing(fields))
         try save(updated)
@@ -533,7 +545,7 @@ final class LocalMusicLibrary {
 
     /// Deletes an imported copy. A linked song is only hidden: its file stays in the folder.
     func remove(_ id: String) throws {
-        guard let track = index.tracks.first(where: { $0.id == id }) else { return }
+        guard let track = track(id) else { return }
         if track.folderID != nil {
             var updated = index
             updated.hide(id)
@@ -555,7 +567,7 @@ final class LocalMusicLibrary {
         if let art = track.artworkFilename { try? FileManager.default.removeItem(at: root.appendingPathComponent(art)) }
     }
     func fileURL(_ id: String) throws -> URL {
-        guard let track = index.tracks.first(where: { $0.id == id }) else { throw LocalLibraryError.missing }
+        guard let track = track(id) else { throw LocalLibraryError.missing }
         guard let url = url(for: track) else {
             throw LocalLibraryError.folderUnavailable(track.folderID.flatMap(index.folder)?.name ?? "Linked folder")
         }
@@ -578,7 +590,7 @@ final class LocalMusicLibrary {
         return url
     }
     func artwork(_ id: String) async throws -> Data {
-        guard let filename = index.tracks.first(where: { $0.id == id })?.artworkFilename else {
+        guard let filename = track(id)?.artworkFilename else {
             throw LocalLibraryError.missing
         }
         let url = root.appendingPathComponent(filename)
@@ -591,7 +603,7 @@ final class LocalMusicLibrary {
     /// Hashes the cover off the main thread; nil when the song has no cover.
     func loadArtworkKey(_ id: String) async -> String? {
         if let key = artworkKeys[id] { return key }
-        guard let filename = index.tracks.first(where: { $0.id == id })?.artworkFilename else { return nil }
+        guard let filename = track(id)?.artworkFilename else { return nil }
         let url = root.appendingPathComponent(filename)
         let key = await Task.detached(priority: .utility) {
             (try? Data(contentsOf: url)).map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
@@ -604,7 +616,7 @@ final class LocalMusicLibrary {
         return album
     }
     func lyrics(for song: Song) async throws -> [StructuredLyrics] {
-        guard let track = index.tracks.first(where: { $0.id == song.id }) else { return [] }
+        guard let track = track(song.id) else { return [] }
         var texts: [String] = []
         for key in ["SYNCEDLYRICS", "LYRICS", "UNSYNCEDLYRICS", "UNSYNCHRONIZEDLYRICS"] {
             for text in track.metadata?.values(key) ?? [] where !texts.contains(text) { texts.append(text) }

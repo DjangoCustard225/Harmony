@@ -17,10 +17,6 @@ extension View {
         modifier(PageBackground())
     }
 
-    func panel(radius: CGFloat = 22) -> some View {
-        modifier(PanelBackground(radius: radius))
-    }
-
     func readingWidth() -> some View { frame(maxWidth: 1000).frame(maxWidth: .infinity) }
 }
 
@@ -28,27 +24,10 @@ private struct PageBackground: ViewModifier {
     func body(content: Content) -> some View {
         content.background(AppBackground()).scrollContentBackground(.hidden).scrollEdgeEffectStyle(.soft, for: .all)
             .toolbarMinimizationBehavior(.onScrollDown, for: .navigationBar)
-    }
-}
-
-private struct PanelBackground: ViewModifier {
-    @Environment(\.appTheme) private var theme
-    let radius: CGFloat
-    func body(content: Content) -> some View {
-        content.background(theme.surface, in: RoundedRectangle(cornerRadius: radius))
-            .overlay { RoundedRectangle(cornerRadius: radius).strokeBorder(theme.border, lineWidth: 1) }
-    }
-}
-
-struct BrandMark: View {
-    @Environment(\.appTheme) private var theme
-    var size: CGFloat = 64
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.28).fill(theme.accent.gradient)
-            Image("HarmonyMark").renderingMode(.template).resizable().scaledToFit()
-                .foregroundStyle(theme.background)
-        }.frame(width: size, height: size).accessibilityHidden(true)
+            // Bars still shrink on scroll, but the page's insets stay put. Otherwise a swipe back that starts
+            // with shrunk bars loops forever (iOS 27): new insets move the scroll offset, which resizes the bars.
+            .toolbarMinimizationSafeAreaAdjustment(.disabled, for: .navigationBar)
+            .toolbarMinimizationSafeAreaAdjustment(.disabled, for: .tabBar)
     }
 }
 
@@ -199,8 +178,6 @@ struct SongRow: View {
                         // The accent is white like every title, so mark the playing song with a symbol.
                         PlayingIndicator().font(.caption)
                     }
-                    Text(TimeLabel.clock(Double(song.duration ?? 0))).font(.caption).monospacedDigit().foregroundStyle(
-                        theme.secondary)
                 }.frame(minHeight: 44).contentShape(Rectangle()).padding(.vertical, 4)
             }.buttonStyle(.plain)
             Menu {
@@ -291,15 +268,17 @@ struct SectionTitle: View {
     }
 }
 
-struct ErrorCard: View {
-    @Environment(\.appTheme) private var theme
+/// A load failure in the same centred style as the empty states, with a way to retry.
+struct ErrorState: View {
     let message: String
     let retry: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Couldn't load your music", systemImage: "exclamationmark.triangle").font(.headline)
-            Text(message).font(.subheadline).foregroundStyle(theme.secondary)
-            Button("Try again", systemImage: "arrow.clockwise", action: retry).buttonStyle(.bordered)
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()
+        ContentUnavailableView {
+            Label("Couldn’t load your music", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+        } actions: {
+            Button("Try again", action: retry).buttonStyle(.glass)
+        }
     }
 }

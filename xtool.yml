@@ -4,4 +4,3 @@ infoPath: Harmony/Info.plist
 iconPath: AppIcon.png
 resources:
   - Harmony/PrivacyInfo.xcprivacy
-  - Harmony/Assets.xcassets/HarmonyMark.imageset/HarmonyMark.png

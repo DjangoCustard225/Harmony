@@ -45,7 +45,7 @@ struct AlbumDetailView: View {
                             "Album removed", systemImage: "square.stack",
                             description: Text("This album is no longer in your library."))
                     } else if let message {
-                        ErrorCard(message: message) { Task { await load() } }
+                        ErrorState(message: message) { Task { await load() } }
                     }
                     if loading {
                         ProgressView().accessibilityLabel("Loading album")

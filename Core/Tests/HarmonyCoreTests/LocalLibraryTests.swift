@@ -57,6 +57,23 @@ final class LocalLibraryTests: XCTestCase {
         XCTAssertEqual(group.map(\.id), ["a", "b", "c"])
         XCTAssertEqual(group.dropFirst().map(\.id), ["b", "c"])
     }
+    func testSimilarGroupsMatchRetaggedCopiesButNotOtherVersions() {
+        func track(_ id: String, _ title: String, _ artist: String, _ duration: Int, sha: String) -> LocalTrack {
+            LocalTrack(
+                id: id, filename: id, title: title, artist: artist, album: nil, duration: duration,
+                fingerprint: FileFingerprint(sha256: sha, size: 1, modified: Date(timeIntervalSince1970: 0)),
+                folderID: id == "linked" ? "folder" : nil)
+        }
+        let tracks = [
+            track("imported", "Dammit", "blink-182", 165, sha: "a"),
+            track("linked", "dammit ", "Blink-182", 166, sha: "b"),
+            track("live", "Dammit", "blink-182", 190, sha: "c"),
+            track("same1", "Other", "Band", 100, sha: "x"),
+            track("same2", "Other", "Band", 100, sha: "x"),
+        ]
+        let groups = LocalLibraryIndex(tracks: tracks).similarGroups
+        XCTAssertEqual(groups.map { Set($0.map(\.id)) }, [["imported", "linked"]])
+    }
     func testLegacyManifestWithoutFingerprintDecodes() throws {
         let track = LocalTrack(filename: "a.flac", title: "Song", artist: nil, album: nil)
         let data = try JSONEncoder().encode(LocalLibraryIndex(tracks: [track]))
