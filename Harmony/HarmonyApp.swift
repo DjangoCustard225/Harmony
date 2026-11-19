@@ -80,13 +80,13 @@ struct RootView: View {
     private var appContent: some View {
         TabView(selection: $selection) {
             Tab("Library", systemImage: "music.note.square.stack", value: AppTab.library) {
-                NavigationStack { LibraryHomeView() }
+                AlbumNavigationStack { LibraryHomeView() }
             }
             Tab("Settings", systemImage: "gearshape", value: .settings) {
                 NavigationStack { SettingsView() }
             }
             Tab("Search", systemImage: "magnifyingglass", value: .search, role: .search) {
-                NavigationStack { MusicSearchView(query: $searchQuery) }
+                AlbumNavigationStack { MusicSearchView(query: $searchQuery) }
                     .searchable(
                         text: $searchQuery, isPresented: $searchPresented, prompt: "Albums, artists, tracks"
                     )

@@ -108,6 +108,9 @@ struct AlbumCard: View {
 }
 
 struct AlbumGrid: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.appTheme) private var theme
+    @Environment(\.openAlbum) private var openAlbum
     let albums: [Album]
     var body: some View {
         LazyVGrid(
@@ -121,7 +124,16 @@ struct AlbumGrid: View {
                     AlbumCard(album: album)
                 }
                 .buttonStyle(.plain)
-                .contextMenu { AlbumActions(album: album) }
+                .contextMenu {
+                    // Tapping a custom preview only closes the menu, so this opens the album instead.
+                    if let openAlbum {
+                        Button("Go to Album", systemImage: "info.circle") { openAlbum(album) }
+                    }
+                    AlbumActions(album: album)
+                } preview: {
+                    // Previews are drawn outside this view, so hand them what the artwork needs.
+                    AlbumPreview(album: album).environment(store).environment(\.appTheme, theme)
+                }
             }
         }
     }
