@@ -85,7 +85,6 @@ private struct ArtistAboutSheet: View {
                 Text(biography).font(.body).lineSpacing(5).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 24).padding(.top, 28).padding(.bottom, 24)
-                    .readingWidth()
             }
         }
     }

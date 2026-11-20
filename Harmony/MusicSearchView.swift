@@ -37,7 +37,7 @@ struct MusicSearchView: View {
                         } else if visibleResultsEmpty {
                             ContentUnavailableView.search(text: term).padding(.top, 24)
                         }
-                    }.padding(16).readingWidth()
+                    }.padding(16)
                         .background { NativeScrollToTop().frame(width: 0, height: 0) }
                 }
             }

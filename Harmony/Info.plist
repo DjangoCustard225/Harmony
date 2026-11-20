@@ -35,6 +35,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>25</string>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

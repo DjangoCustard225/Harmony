@@ -16,8 +16,6 @@ extension View {
     func pageBackground() -> some View {
         modifier(PageBackground())
     }
-
-    func readingWidth() -> some View { frame(maxWidth: 1000).frame(maxWidth: .infinity) }
 }
 
 private struct PageBackground: ViewModifier {
