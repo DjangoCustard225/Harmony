@@ -56,6 +56,29 @@ struct LibraryHomeView: View {
     }
 }
 
+/// The iPad sidebar's Recently Added page.
+struct RecentlyAddedView: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        Group {
+            if store.recentAlbums.isEmpty {
+                LibraryEmptyState(
+                    title: "No music yet", symbol: "music.note",
+                    message: "Import songs from Files or link a music folder to start listening.")
+            } else {
+                ScrollView {
+                    AlbumGrid(albums: store.recentAlbums)
+                        .padding(.horizontal, 20).padding(.vertical, 12).readingWidth()
+                        .background { NativeScrollToTop().frame(width: 0, height: 0) }
+                }
+            }
+        }
+        .navigationTitle("Recently Added")
+        .pageBackground()
+    }
+}
+
 /// The full list of albums, artists or songs, opened from the Library tab.
 struct LibraryView: View {
     @Environment(\.appTheme) private var theme
